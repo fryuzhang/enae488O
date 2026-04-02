@@ -5,7 +5,7 @@
 
 message_t msg_tx;
 uint8_t message_sent = 0;
-bool new_message = false;
+_Bool new_message = 0;
 
 // store information about incoming messages
 volatile uint8_t sender_id = 0;
@@ -44,15 +44,15 @@ bot_dists_t bot_dists[N];
 // leader logic
 uint8_t id_to_assign = 1;
 uint8_t claimed_count = 0;
-bool is_leader = false;
-bool all_assigned = false;
-bool pinging = false;
-bool resting_from_race = false;
+_Bool is_leader = 0;
+_Bool all_assigned = 0;
+_Bool pinging = 0;
+_Bool resting_from_race = 0;
 uint32_t rest_timer = 0;
 
 // follower logic
 uint8_t target_id = UINT8_MAX;
-bool pending_status_reset = false;
+_Bool pending_status_reset = 0;
 
 // all kilobots
 uint8_t my_id = UINT8_MAX;
@@ -69,7 +69,7 @@ void message_tx_success() {
 
     // if a follower has just told everyone it successfully won a race, reset it to idle
     if(pending_status_reset){
-        pending_status_reset = false;
+        pending_status_reset = 0;
         msg_tx.data[8] = 0;
         msg_tx.crc = message_crc(&msg_tx);
     }
@@ -77,7 +77,7 @@ void message_tx_success() {
 
 // recieving mesages
 void message_rx(message_t *m, distance_measurement_t *d) {
-    new_message = true;
+    new_message = 1;
     
     // extract message data
     sender_id = m->data[0];
@@ -98,7 +98,7 @@ void setup(){
     seed = rand_hard();
     rand_seed(seed);
     if (kilo_uid == LEADER_UID){
-        is_leader = true;
+        is_leader = 1;
         my_id = 0;
         current_state = ASSIGNED; // Leader is assigned by default
 
@@ -149,7 +149,7 @@ void loop(){
             if(!all_assigned && status == 3) {
                 // make sure that the sender_id is within bounds and that this is the first time this kilobot has claimed
                 // it has won a race. Guarding against multiple status 3s before successful reset
-                if (sender_id >= 1 && sender_id < N  && bot_dists[sender_id] == UINT8_MAX){
+                if (sender_id >= 1 && sender_id < N  && bot_dists[sender_id].id == UINT8_MAX){
                     // verify that sender_id is within bounds
                     bot_dists[sender_id].id = sender_id;
                     bot_dists[sender_id].distance = dist_to_leader;
@@ -159,20 +159,20 @@ void loop(){
 
                 // begin rest
                 if (!resting_from_race){
-                    resting_from_race = true;
+                    resting_from_race = 1;
                     rest_timer = 16 + kilo_ticks;
                     msg_tx.data[8] = 2;
                     msg_tx.crc = message_crc(&msg_tx);
                 }
                 // check to see if all id's have now been assigned
                 if(claimed_count >= N-1){
-                    all_assigned = true;
-                    pinging = true; // start pinging for distances
-                    resting_from_race = false; // cancel bc no more races
+                    all_assigned = 1;
+                    pinging = 1; // start pinging for distances
+                    resting_from_race = 0; // cancel bc no more races
                 }
             }
         }
-        new_message = false; // we finished processing the new message
+        new_message = 0; // we finished processing the new message
     }
 
 
@@ -191,7 +191,7 @@ void loop(){
             msg_tx.crc = message_crc(&msg_tx);
 
             // ask for status reset
-            pending_status_reset = true;
+            pending_status_reset = 1;
         }
     }
 
@@ -205,7 +205,7 @@ void loop(){
 
                 if(kilo_ticks >= rest_timer){
                     // if we have rested enough, start next race
-                    resting_from_race = false;
+                    resting_from_race = 0;
                     msg_tx.data[7] = id_to_assign;
                     msg_tx.data[8] = 1;
                     msg_tx.crc = message_crc(&msg_tx);
@@ -250,4 +250,14 @@ void loop(){
             set_color(RGB(0, 0, 0)); // no color
             break;
     }
+}
+
+
+int main() {
+    kilo_init();
+    kilo_message_tx = message_tx;
+    kilo_message_tx_success = message_tx_success;
+    kilo_message_rx = message_rx;
+    kilo_start(setup, loop);
+
 }

@@ -33,6 +33,33 @@ message_t *message_tx() {
         return '\0';
 }
 
+void set_motion(motion_t new_motion) {
+    if (cur_motion != new_motion) {
+        cur_motion = new_motion;
+        switch(cur_motion) {
+            case STOP:
+                set_motors(0,0);
+                set_color(1,0,0);
+                break;
+            case FORWARD:
+                spinup_motors();
+                set_motors(kilo_straight_left, kilo_straight_right);
+                set_color(1,1,0);
+                break;
+            case LEFT:
+                spinup_motors();
+                set_motors(kilo_turn_left, 0);
+                set_color(1,1,0);
+                break;
+            case RIGHT:
+                spinup_motors();
+                set_motors(0, kilo_turn_right);
+                set_color(1,1,0);
+                break;
+        }
+    }
+}
+
 void update_message() {
     // pack one 16-bit integer into two 8-bit integers
     msg.data[0] = gradient_value&0xFF;

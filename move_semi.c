@@ -1,6 +1,6 @@
 #include "kilolib.h"
 
-#define N 3 // total number of kilobots
+#define N 2 // total number of kilobots
 #define TOOCLOSE_DIST (40 + (N) * 10) // 40 + 10N (mm)
 #define DESIRED_DIST (60 + (N) * 10) // 60 + 10N (mm)
 #define ONE_SECOND 32 // 32 ticks

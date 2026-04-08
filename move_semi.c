@@ -5,7 +5,7 @@
 #define DESIRED_DIST (60 + (N) * 10) // 60 + 10N (mm)
 #define ONE_SECOND 32 // 32 ticks
 
-uint32_t orbit_time = 3 * ONE_SECOND + N * ONE_SECOND; // orbit for 3 seconds + N seconds -> will need to tune
+uint32_t orbit_time = 10 * ONE_SECOND + N * 5 * ONE_SECOND; // orbit for 3 seconds + N seconds -> will need to tune
 
 typedef enum {
     STOP,

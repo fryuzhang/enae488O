@@ -1,0 +1,23 @@
+move_semi.c: In function 'set_motion':
+move_semi.c:43:13: error: expected ')' before 'break'
+             break;
+             ^~~~~
+move_semi.c:63:1: error: expected ';' before '}' token
+ }
+ ^
+move_semi.c:38:9: warning: enumeration value 'FORWARD' not handled in switch [-Wswitch]
+         switch (cur_motion)
+         ^~~~~~
+move_semi.c:38:9: warning: enumeration value 'LEFT' not handled in switch [-Wswitch]
+move_semi.c:38:9: warning: enumeration value 'RIGHT' not handled in switch [-Wswitch]
+move_semi.c:132:5: warning: 'main' is normally a non-static function [-Wmain]
+ int main() {
+     ^~~~
+move_semi.c:138:1: error: expected declaration or statement at end of input
+ }
+ ^
+move_semi.c:138:1: error: expected declaration or statement at end of input
+At top level:
+move_semi.c:132:5: warning: 'main' defined but not used [-Wunused-function]
+ int main() {
+     ^~~~

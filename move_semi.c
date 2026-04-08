@@ -22,7 +22,7 @@ typedef enum {
 // motion and messages
 motion_t cur_motion = STOP;
 orbit_state_t orbit_state = ORBIT_NORMAL;
-uint8_t cur_distance = 0;
+uint32_t cur_distance = 0;
 uint8_t new_message = 0;
 distance_measurement_t dist;
 
@@ -39,7 +39,7 @@ void set_motion(motion_t new_motion){
         {
         case STOP:
             set_motors(0, 0);
-            set_color(RGB(1, 0, 0)); // red
+            set_color(RGB(1, 0, 1)); // magenta
             break;
         case FORWARD:
             spinup_motors();
@@ -80,7 +80,10 @@ void orbit_tooclose() {
         set_motion(FORWARD);
 }
 
-void setup(){}
+void setup(){
+    set_color(RGB(1, 0, 0)); 
+    set_motors(0, 0);
+}
 
 void loop(){
     if(orbit_finished) {
@@ -136,3 +139,5 @@ int main() {
 
     return 0;
 }
+
+

@@ -284,6 +284,17 @@ void loop(void)
                 // update number of successful leaps
                 total_leaps++;
                 if (total_leaps >= N){
+                /*
+                 * We want the kilobot to change the direction of it's orbit
+                 * as it will go back to it's original direction if we 
+                 * tell it to orbit again
+                 * Start by resetting the total_leaps to 0, we've completed
+                 * one cycle.
+                 * orbit_clockwise is initially 1, it starts with a clockwise orbit
+                 * increment and take mod(2). This returns 0
+                 * and is "false"
+                 * this lets us swap between true and false
+                 */
                     total_leaps = 0;
                     orbit_clockwise++;
                     orbit_clockwise = orbit_clockwise % 2;

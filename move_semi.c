@@ -74,10 +74,11 @@ void orbit_normal() {
 }
 
 void orbit_tooclose() {
-    if (cur_distance >= DESIRED_DIST)
+    if (cur_distance >= DESIRED_DIST){
         orbit_state = ORBIT_NORMAL;
-    else
-        set_motion(FORWARD);
+        orbit_normal();}
+    else {
+        set_motion(FORWARD);}
 }
 
 void setup(){
@@ -86,6 +87,10 @@ void setup(){
 }
 
 void loop(){
+    if (kilo_ticks < ONE_SECOND){
+        set_color(RGB(1, 1, 0));
+        return;
+    }
     if(orbit_finished) {
         // stop and end
         set_motion(STOP);

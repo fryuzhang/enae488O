@@ -8,7 +8,7 @@
  * The current leader changes roles once it measures the current frog
  * at or below this distance.
  */
-#define LEAP_COMPLETE_DISTANCE 80
+#define LEAP_COMPLETE_DISTANCE 60
 
 /*
  * Orbit motion distance thresholds
@@ -17,8 +17,8 @@
  * if greater, move left towards the star
  * if less, move right away from the star
  */
-#define TOOCLOSE_DIST 100
-#define DESIRED_DIST 125
+#define TOOCLOSE_DIST 60
+#define DESIRED_DIST 85
 
 
 

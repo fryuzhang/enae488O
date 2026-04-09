@@ -121,13 +121,25 @@ void loop(){
 
 
     // Orbit state machine
-    switch(orbit_state) {
-        case ORBIT_NORMAL:
-            orbit_normal();
-            break;
-        case ORBIT_TOOCLOSE:
-            orbit_tooclose();
-            break;
+    // switch(orbit_state) {
+    //     case ORBIT_NORMAL:
+    //         orbit_normal();
+    //         break;
+    //     case ORBIT_TOOCLOSE:
+    //         orbit_tooclose();
+    //         break;
+    // }
+
+    if (cur_distance < TOOCLOSE_DIST){
+        set_motion(FORWARD);
+    }
+    else {
+        if (cur_distance < DESIRED_DIST){
+            set_motion(LEFT);
+        }
+        else{
+            set_motion(RIGHT);
+        }
     }
 
 }

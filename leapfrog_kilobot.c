@@ -1,213 +1,209 @@
-#include <kilolib.h>
+#include "kilolib.h"
 
-#define NUM_KILOBOTS 4
+/* -------- USER SETTINGS -------- */
+#define NUM_BOTS 4
 
-typedef enum {
-    STOP,
-    FORWARD,
-    LEFT,
-    RIGHT
-} motion_t;
+/* Hardware UID order (physical lineup) */
+unsigned int ORDER_UIDS[NUM_BOTS] = {1001, 1002, 1003, 1004};
 
-static motion_t cur_motion = STOP;
+/* Leap completion threshold */
+#define LEAP_COMPLETE_DIST 100.0
 
-static message_t msg;
-static uint8_t new_message = 0;
-static distance_measurement_t dist;
+/* -------- MESSAGE FORMAT -------- */
+#define MSG_UID_L     0
+#define MSG_UID_H     1
+#define MSG_LEADER_L  2
+#define MSG_LEADER_H  3
+#define MSG_EPOCH     4
+#define MSG_FLAGS     5
 
-static uint16_t rx_sender_uid = 0;
-static uint16_t rx_leader_uid = 1001;
-static uint16_t rx_frog_uid = 1004;
-static uint8_t rx_phase_id = 0;
+#define FLAG_LEAP_DONE 1
 
-static uint16_t leader_uid = 1001;
-static uint16_t frog_uid = 1004;
-static uint8_t phase_id = 0;
+/* -------- GLOBAL VARIABLES -------- */
+message_t msg;
 
-static uint8_t distance_to_frog = 0;
-static uint8_t phase_start_distance = 0;
-static uint8_t phase_distance_set = 0;
+unsigned int current_leader_uid;
+unsigned char leap_epoch = 0;
+unsigned char new_message = 0;
 
-static const uint16_t uid_ring[NUM_KILOBOTS] = {
-    1001, 1002, 1003, 1004
-};
+/* received data */
+unsigned int rx_sender_uid;
+unsigned int rx_leader_uid;
+unsigned char rx_epoch;
+unsigned char rx_flags;
 
-static inline void pack_u16(uint8_t *data, uint8_t idx, uint16_t value)
+/* distance measurement */
+float rx_distance;
+
+/* leader tracking */
+float dist_to_last = 10000.0;
+unsigned char saw_last_robot = 0;
+
+/* local state */
+unsigned char leap_done_local = 0;
+
+/* -------- HELPER FUNCTIONS -------- */
+
+int get_index(unsigned int uid)
 {
-    data[idx] = (uint8_t)(value & 0xFF);
-    data[idx + 1] = (uint8_t)((value >> 8) & 0xFF);
-}
-
-static inline uint16_t unpack_u16(uint8_t *data, uint8_t idx)
-{
-    return (uint16_t)data[idx] | ((uint16_t)data[idx + 1] << 8);
-}
-
-void set_motion(motion_t new_motion)
-{
-    if (cur_motion != new_motion) {
-        cur_motion = new_motion;
-        switch (cur_motion) {
-            case STOP:
-                set_motors(0, 0);
-                break;
-            case FORWARD:
-                spinup_motors();
-                set_motors(kilo_straight_left, kilo_straight_right);
-                break;
-            case LEFT:
-                spinup_motors();
-                set_motors(kilo_turn_left, 0);
-                break;
-            case RIGHT:
-                spinup_motors();
-                set_motors(0, kilo_turn_right);
-                break;
-        }
+    int i;
+    for (i = 0; i < NUM_BOTS; i++) {
+        if (ORDER_UIDS[i] == uid) return i;
     }
+    return -1;
 }
 
-void update_color(void)
+unsigned int get_next_leader(unsigned int uid)
 {
-    if (kilo_uid == leader_uid) {
-        set_color(RGB(0,1,0));
-    } else if (kilo_uid == frog_uid) {
-        set_color(RGB(1,0,0));
-    } else {
-        set_color(RGB(0,0,1));
-    }
+    int idx = get_index(uid);
+
+    if (idx < 0) return ORDER_UIDS[0];
+
+    idx++;
+    if (idx >= NUM_BOTS) idx = 0;
+
+    return ORDER_UIDS[idx];
 }
 
-void update_message(void)
+unsigned int get_last_uid()
+{
+    return ORDER_UIDS[NUM_BOTS - 1];
+}
+
+/* -------- MESSAGE PACKING -------- */
+
+void update_message()
 {
     msg.type = NORMAL;
 
-    pack_u16(msg.data, 0, kilo_uid);
-    pack_u16(msg.data, 2, leader_uid);
-    pack_u16(msg.data, 4, frog_uid);
-    msg.data[6] = phase_id;
-    msg.data[7] = 0;
-    msg.data[8] = 0;
+    /* include own UID (NEW) */
+    msg.data[MSG_UID_L] = kilo_uid & 0xFF;
+    msg.data[MSG_UID_H] = (kilo_uid >> 8) & 0xFF;
+
+    /* leader info */
+    msg.data[MSG_LEADER_L] = current_leader_uid & 0xFF;
+    msg.data[MSG_LEADER_H] = (current_leader_uid >> 8) & 0xFF;
+
+    msg.data[MSG_EPOCH] = leap_epoch;
+
+    msg.data[MSG_FLAGS] = 0;
+    if (leap_done_local) {
+        msg.data[MSG_FLAGS] |= FLAG_LEAP_DONE;
+    }
 
     msg.crc = message_crc(&msg);
 }
 
-uint8_t uid_index(uint16_t uid)
+/* -------- SETUP -------- */
+
+void setup()
 {
-    uint8_t i;
-    for (i = 0; i < NUM_KILOBOTS; i++) {
-        if (uid_ring[i] == uid) {
-            return i;
-        }
-    }
-    return 0;
-}
+    current_leader_uid = ORDER_UIDS[0];
+    leap_epoch = 0;
+    leap_done_local = 0;
 
-void reset_phase_measurement(void)
-{
-    distance_to_frog = 0;
-    phase_start_distance = 0;
-    phase_distance_set = 0;
-}
-
-void adopt_new_phase_from_message(void)
-{
-    if (rx_phase_id > phase_id) {
-        phase_id = rx_phase_id;
-        leader_uid = rx_leader_uid;
-        frog_uid = rx_frog_uid;
-        reset_phase_measurement();
-        set_motion(STOP);
-        update_color();
-        update_message();
-    }
-}
-
-void advance_leapfrog_phase(void)
-{
-    uint8_t current_index = uid_index(leader_uid);
-    uint8_t next_index = (current_index + 1) % NUM_KILOBOTS;
-    uint16_t old_leader_uid = leader_uid;
-
-    leader_uid = uid_ring[next_index];
-    frog_uid = old_leader_uid;
-    phase_id++;
-
-    reset_phase_measurement();
-    set_motion(STOP);
-    update_color();
     update_message();
 }
 
-void setup(void)
-{
-    update_color();
-    update_message();
-}
+/* -------- MAIN LOOP -------- */
 
-void loop(void)
+void loop()
 {
-    uint8_t threshold;
+    int my_index;
 
     if (new_message) {
+
+        /* gradient-style sync */
+        if (rx_epoch > leap_epoch) {
+            leap_epoch = rx_epoch;
+            current_leader_uid = rx_leader_uid;
+            leap_done_local = 0;
+            update_message();
+        }
+
+        /* leader handoff */
+        if ((kilo_uid == current_leader_uid) &&
+            (rx_flags & FLAG_LEAP_DONE)) {
+
+            current_leader_uid = get_next_leader(current_leader_uid);
+            leap_epoch++;
+            leap_done_local = 0;
+
+            update_message();
+        }
+
         new_message = 0;
+    }
 
-        adopt_new_phase_from_message();
+    my_index = get_index(kilo_uid);
 
-        if ((kilo_uid == leader_uid) && (rx_sender_uid == frog_uid)) {
-            distance_to_frog = estimate_distance(&dist);
+    /* -------- LEAP COMPLETION LOGIC -------- */
+    if (kilo_uid == current_leader_uid) {
 
-            if ((phase_distance_set == 0) && (distance_to_frog > 0)) {
-                phase_start_distance = distance_to_frog;
-                phase_distance_set = 1;
-            }
+        if (saw_last_robot && dist_to_last > LEAP_COMPLETE_DIST) {
+            leap_done_local = 1;
+            update_message();
         }
     }
 
-    update_color();
-
-    if (kilo_uid == leader_uid) {
-        if ((phase_distance_set == 0) || (distance_to_frog == 0)) {
-            set_motion(STOP);
-            return;
-        }
-
-        threshold = phase_start_distance / NUM_KILOBOTS;
-        if (threshold == 0) {
-            threshold = 1;
-        }
-
-        if (distance_to_frog <= threshold) {
-            advance_leapfrog_phase();
-        } else {
-            set_motion(FORWARD);
-        }
-    } else {
-        set_motion(STOP);
+    /* -------- COLOR LOGIC -------- */
+    if (kilo_uid == current_leader_uid) {
+        set_color(RGB(0,1,0));   // GREEN = leader
+    }
+    else if (my_index == NUM_BOTS - 1) {
+        set_color(RGB(1,0,0));   // RED = last
+    }
+    else {
+        set_color(RGB(0,0,1));   // BLUE = middle
     }
 }
 
-message_t *message_tx(void)
-{
-    return &msg;
-}
+/* -------- MESSAGE RECEIVE -------- */
 
 void message_rx(message_t *m, distance_measurement_t *d)
 {
     new_message = 1;
-    dist = *d;
 
-    rx_sender_uid = unpack_u16(m->data, 0);
-    rx_leader_uid = unpack_u16(m->data, 2);
-    rx_frog_uid = unpack_u16(m->data, 4);
-    rx_phase_id = m->data[6];
+    /* unpack sender UID (NEW) */
+    rx_sender_uid = m->data[MSG_UID_L] |
+                   (m->data[MSG_UID_H] << 8);
+
+    rx_leader_uid = m->data[MSG_LEADER_L] |
+                   (m->data[MSG_LEADER_H] << 8);
+
+    rx_epoch = m->data[MSG_EPOCH];
+    rx_flags = m->data[MSG_FLAGS];
+
+    /* actual distance measurement */
+    rx_distance = estimate_distance(d);
+
+    /* leader tracks distance to last robot */
+    if (kilo_uid == current_leader_uid) {
+
+        if (rx_sender_uid == get_last_uid()) {
+            dist_to_last = rx_distance;
+            saw_last_robot = 1;
+        }
+    }
 }
 
-int main(void)
+/* -------- TRANSMIT -------- */
+
+message_t *message_tx()
+{
+    return &msg;
+}
+
+/* -------- MAIN -------- */
+
+int main()
 {
     kilo_init();
-    kilo_message_tx = message_tx;
+
     kilo_message_rx = message_rx;
+    kilo_message_tx = message_tx;
+
     kilo_start(setup, loop);
+
     return 0;
 }

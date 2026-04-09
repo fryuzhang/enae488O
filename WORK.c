@@ -4,9 +4,10 @@
 
 #define  STATE_ELECTION   0
 #define  STATE_SETLE      1
-#define  STATE_ACTION    
+#define  STATE_ACTION     2
 
-
+uint8_t  state          = STATE_ELECTION;
+uint32_t settle_start   = 0;
 uint16_t   my_rank      = 0xFFFF;
 int        heard_lower  = 0;
 uint32_t   start_ticks  = 0;
@@ -39,8 +40,7 @@ void message_rx(message_t *msg, distance_measurement_t *dist) {
     new_message = 1;
 }
 
-
-void do_action() {
+void do_something() {
     uint8_t color = (kilo_ticks / 32) % 7;
     uint8_t r = (color + 1) & 1;
     uint8_t g = ((color + 1) >> 1) & 1;
@@ -48,28 +48,25 @@ void do_action() {
     set_color(RGB(r, g, b));
 }
 
-
 void show_rank_color() {
     if (my_rank == 0xFFFF) {
         set_color(RGB(0,0,1));
         return;
     }
 
-    uint8_t tier  = my_rank / 6;
-    uint8_t slot  = my_rank % 6;
-    uint8_t slot1 = slot + 1;
-    uint8_t r     = (slot1 & 0x01) ? 1 : 0;
-    uint8_t g     = (slot1 & 0x02) ? 1 : 0;
-    uint8_t b     = (slot1 & 0x04) ? 1 : 0;
+    uint8_t tier       = my_rank / 6;
+    uint8_t slot       = my_rank % 6;
+    uint8_t slot1      = slot + 1;
+    uint8_t r          = (slot1 & 0x01) ? 1 : 0;
+    uint8_t g          = (slot1 & 0x02) ? 1 : 0;
+    uint8_t b          = (slot1 & 0x04) ? 1 : 0;
     uint16_t color_on  = 20;
     uint16_t color_off = 12;
     uint16_t white_on  = 16;
     uint16_t white_off = 12;
     uint16_t end_gap   = 28;
-
     uint16_t cycle_len = color_on + color_off + tier * (white_on + white_off)+ end_gap;
-
-    uint16_t t = kilo_ticks % cycle_len;
+    uint16_t t         = kilo_ticks % cycle_len;
 
     if (t < color_on) {
         set_color(RGB(r, g, b));
@@ -134,7 +131,7 @@ void loop() {
             build_tx_msg();
         }
         if (my_rank != 0xFFFF) {
-            state= STATE_TIME;
+            state= STATE_SETLE;
             settle_start = kilo_ticks;
         }
         show_rank_color();
@@ -154,7 +151,7 @@ void loop() {
 
         if (kilo_ticks > settle_start + SETTLE_WINDOW) {
             state = STATE_ACTION;             
-
+		}
         show_rank_color();
         break;
 

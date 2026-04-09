@@ -40,7 +40,6 @@ void message_rx(message_t *msg, distance_measurement_t *dist) {
     new_message = 1;
 }
 
-
 void do_something() {
     uint8_t color = (kilo_ticks / 32) % 7;
     uint8_t r = (color + 1) & 1;
@@ -49,28 +48,25 @@ void do_something() {
     set_color(RGB(r, g, b));
 }
 
-
 void show_rank_color() {
     if (my_rank == 0xFFFF) {
         set_color(RGB(0,0,1));
         return;
     }
 
-    uint8_t tier  = my_rank / 6;
-    uint8_t slot  = my_rank % 6;
-    uint8_t slot1 = slot + 1;
-    uint8_t r     = (slot1 & 0x01) ? 1 : 0;
-    uint8_t g     = (slot1 & 0x02) ? 1 : 0;
-    uint8_t b     = (slot1 & 0x04) ? 1 : 0;
+    uint8_t tier       = my_rank / 6;
+    uint8_t slot       = my_rank % 6;
+    uint8_t slot1      = slot + 1;
+    uint8_t r          = (slot1 & 0x01) ? 1 : 0;
+    uint8_t g          = (slot1 & 0x02) ? 1 : 0;
+    uint8_t b          = (slot1 & 0x04) ? 1 : 0;
     uint16_t color_on  = 20;
     uint16_t color_off = 12;
     uint16_t white_on  = 16;
     uint16_t white_off = 12;
     uint16_t end_gap   = 28;
-
     uint16_t cycle_len = color_on + color_off + tier * (white_on + white_off)+ end_gap;
-
-    uint16_t t = kilo_ticks % cycle_len;
+    uint16_t t         = kilo_ticks % cycle_len;
 
     if (t < color_on) {
         set_color(RGB(r, g, b));

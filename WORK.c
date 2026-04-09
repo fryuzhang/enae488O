@@ -4,9 +4,10 @@
 
 #define  STATE_ELECTION   0
 #define  STATE_SETLE      1
-#define  STATE_ACTION    
+#define  STATE_ACTION     2
 
-
+uint8_t  state          = STATE_ELECTION;
+uint32_t settle_start   = 0;
 uint16_t   my_rank      = 0xFFFF;
 int        heard_lower  = 0;
 uint32_t   start_ticks  = 0;
@@ -40,7 +41,7 @@ void message_rx(message_t *msg, distance_measurement_t *dist) {
 }
 
 
-void do_action() {
+void do_something() {
     uint8_t color = (kilo_ticks / 32) % 7;
     uint8_t r = (color + 1) & 1;
     uint8_t g = ((color + 1) >> 1) & 1;
@@ -134,7 +135,7 @@ void loop() {
             build_tx_msg();
         }
         if (my_rank != 0xFFFF) {
-            state= STATE_TIME;
+            state= STATE_SETLE;
             settle_start = kilo_ticks;
         }
         show_rank_color();
@@ -154,7 +155,7 @@ void loop() {
 
         if (kilo_ticks > settle_start + SETTLE_WINDOW) {
             state = STATE_ACTION;             
-
+		}
         show_rank_color();
         break;
 

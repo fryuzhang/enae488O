@@ -225,20 +225,19 @@ void setup(void)
     update_message();
 }
 
-/*
- * Main control loop.
- */
 void loop(void)
 {
     if (new_message) {
-        new_message = 0;
+        new_message = 0;  // reset flag after processing a received message
 
-        adopt_new_phase_from_message();
+        adopt_new_phase_from_message();  // sync to newer phase if another robot advanced
 
+        // only the frog (moving robot) checks distance to the leader
         if ((kilo_uid == frog_uid) && (rx_sender_uid == leader_uid)) {
-            distance_to_leader = estimate_distance(&dist);
-            last_leader_message_tick = kilo_ticks;
+            distance_to_leader = estimate_distance(&dist);  // compute distance to leader
+            last_leader_message_tick = kilo_ticks;           // record time of measurement
 
+            // if close enough to leader → leap complete → rotate roles
             if ((distance_to_leader > 0) && (distance_to_leader <= LEAP_COMPLETE_DISTANCE)) {
                 advance_leapfrog_phase();
                 return;
@@ -246,43 +245,64 @@ void loop(void)
         }
     }
 
-    update_color();
+    update_color();  // update LED color based on role
 
+    // motion logic: only frog moves
     if (kilo_uid == frog_uid) {
+
+        // if we recently heard from leader, use that distance info
         if ((last_leader_message_tick > 0) && ((kilo_ticks - last_leader_message_tick) < RECENT_MESSAGE_TICKS)) {
+            
+            // move forward if still far away
             if (distance_to_leader > LEAP_COMPLETE_DISTANCE) {
                 set_motion(FORWARD);
             } else {
-                set_motion(STOP);
+                set_motion(STOP);  // stop if already close
             }
+
         } else {
+            // no recent distance info → keep moving forward blindly
             set_motion(FORWARD);
         }
+
     } else {
+        // all non-frog robots stay still
         set_motion(STOP);
     }
 }
 
 message_t *message_tx(void)
 {
-    return &msg;
+    return &msg;  // continuously broadcast current state message
 }
 
 void message_rx(message_t *m, distance_measurement_t *d)
 {
-    new_message = 1;
-    dist = *d;
+    new_message = 1;  // flag that a new message has arrived
+
+    dist = *d;  // store raw distance measurement
+
+    // unpack sender UID from message
     rx_sender_uid = unpack_u16(m->data, 0);
+
+    // unpack frog UID from message
     rx_frog_uid = unpack_u16(m->data, 2);
+
+    // unpack leader UID from message
     rx_leader_uid = unpack_u16(m->data, 4);
+
+    // unpack phase ID (used for synchronization)
     rx_phase_id = m->data[6];
 }
 
 int main(void)
 {
-    kilo_init();
-    kilo_message_tx = message_tx;
-    kilo_message_rx = message_rx;
-    kilo_start(setup, loop);
+    kilo_init();  // initialize kilobot hardware
+
+    kilo_message_tx = message_tx;  // register transmit callback
+    kilo_message_rx = message_rx;  // register receive callback
+
+    kilo_start(setup, loop);  // start main execution loop
+
     return 0;
 }

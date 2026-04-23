@@ -1,0 +1,39 @@
+#include <kilobot.h>
+void setup() {
+    if (kilo_uid == 1111) {
+        set_color(RGB(0, 0, 3)); // Eyes-BLUE
+    } else if (kilo_uid == 2222) {
+        set_color(RGB(0, 0, 3)); // Eyes-BLUE
+    } else if (kilo_uid == 3333) {
+        set_color(RGB(3, 0, 3)); // Nose-MAGENTA
+    } else if (kilo_uid == 4444) {
+        set_color(RGB(3, 0, 0)); // Mouth-RED
+    } else if (kilo_uid == 5555) {
+        set_color(RGB(3, 0, 0)); // Mouth-RED
+    } else if (kilo_uid == 6666) {
+        set_color(RGB(3, 0, 0)); // Mouth-RED
+    } else {
+        set_color(RGB(1, 1, 1)); // WHITE
+    }
+}
+
+void loop() {
+    if (kilo_uid == 1111) {
+    }
+    else if (kilo_uid == 2222) {
+    }
+    else if (kilo_uid == 3333) {   
+    }
+    else if (kilo_uid == 4444) {
+    }
+    else if (kilo_uid == 5555) {
+    }
+    else if (kilo_uid == 6666) {
+    }
+}
+
+int main() {
+    kilo_init();
+    kilo_start(setup, loop);
+    return 0;
+}

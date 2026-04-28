@@ -58,11 +58,21 @@ void setup() {
 
 }
 movement (){ if (kilo_uid == 111) {
-        
+		set_motion(RIGHT);
+		delay(600);
+		set_motion(FORWARD);
+		set_color(RGB(3,0,0));
+		delay(500);
+		set_motion(STOP);
     }
 
     else if (kilo_uid == 222) {
-        
+        set_motion(RIGHT);
+		delay(600);
+		set_motion(FORWARD);
+		delay(500);
+		set_color(RGB(3,0,0));
+		set_motion(STOP);
     }
 
     else if (kilo_uid == 333) {
@@ -70,20 +80,26 @@ movement (){ if (kilo_uid == 111) {
     }
 
     else if (kilo_uid == 444) {
+		set_motion(FORWARD);
 		delay(500);
 		set_color(RGB(1, 1, 1));
 		delay(500);
+		set_motion(STOP);
 		set_color(RGB(3, 0, 0));    }
 
     else if (kilo_uid == 555) {
-       
+        set_motion(FORWARD);
+		delay(500);
+		set_motion(LEFT)
     }
 
     else if (kilo_uid == 666) {
+		set_motion(FORWARD);
 		delay(500);
 		set_color(RGB(1, 1, 1));
 		delay(500);
-		set_color(RGB(3, 0, 0));  
+		set_motion(STOP);
+		set_color(RGB(3, 0, 0));    }
     }
 }
 void loop() {

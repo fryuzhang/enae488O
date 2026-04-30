@@ -1,4 +1,4 @@
-#include "kilobot.h"
+#include "kilolib.h"
 
 // order set up is (555,111,444,333,222,666)
 
@@ -9,6 +9,8 @@
 #define RIGHT   3
 
 int cur_motion = STOP;
+
+int counter = 0;
 
 void set_motion(int new_motion) {
     cur_motion = new_motion;
@@ -95,7 +97,10 @@ void movement() {
 }
 
 void loop() {
-    movement();
+    if(counter == 0) {
+        movement();
+        counter++;
+    }
 }
 
 int main() {

@@ -25,7 +25,6 @@ void set_motion(int new_motion) {
     } else if (new_motion == RIGHT) {
         spinup_motors();
         set_motors(0, kilo_turn_right);
-    }
 }
 
 void setup() {
@@ -50,48 +49,48 @@ void movement() {
 
     if (kilo_uid == 111) {
         set_motion(FORWARD);
-        delay(1200);                  // 3 chunks forward
+        delay(12000);                  // 3 chunks forward
         set_motion(STOP);
     }
 
     else if (kilo_uid == 222) {
         set_motion(FORWARD);
-        delay(1200);                  // 3 chunks forward
+        delay(12000);                  // 3 chunks forward
         set_motion(STOP);
     }
 
     else if (kilo_uid == 333) {
         set_motion(FORWARD);
-        delay(800);                   // 2 chunks forward
+        delay(8000);                   // 2 chunks forward
         set_motion(LEFT);
-        delay(150);                   // slight left curve 
+        delay(1500);                   // slight left curve 
         set_motion(STOP);
     }
 
     else if (kilo_uid == 444) {
         set_motion(RIGHT);
-        delay(600);                   // 180 degree turn
+        delay(6000);                   // 180 degree turn
         set_motion(FORWARD);
-        delay(400);                   // 1 chunk 
+        delay(4000);                   // 1 chunk 
         set_motion(LEFT);
-        delay(150);                   // slight right
+        delay(1500);                   // slight right
         set_motion(STOP);
     }
 
    
     else if (kilo_uid == 555) {
         set_motion(STOP);
-        delay(500);
+        delay(5000);
         set_color(RGB(1, 1, 1));
-        delay(500);
+        delay(5000);
         set_color(RGB(3, 0, 0));
     }
 
     else if (kilo_uid == 666) {
         set_motion(STOP);
-        delay(500);
+        delay(5000);
         set_color(RGB(1, 1, 1));
-        delay(500);
+        delay(5000);
         set_color(RGB(3, 0, 0));
     }
 }

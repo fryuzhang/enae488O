@@ -25,6 +25,7 @@ void set_motion(int new_motion) {
     } else if (new_motion == RIGHT) {
         spinup_motors();
         set_motors(0, kilo_turn_right);
+    }
 }
 
 void setup() {

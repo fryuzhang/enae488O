@@ -141,7 +141,7 @@ void loop()
         {
             /* Robot 6: right side of mouth. */
             set_motion(FORWARD);
-            delay(12000);
+            delay(5000);
 
             set_motion(STOP);
             movement_done = 1;
@@ -154,6 +154,11 @@ void loop()
     if (movement_done == 1)
     {
         set_motion(STOP);
+        uint8_t color = (kilo_ticks / 32) % 7;
+        uint8_t r = (color + 1) & 1;
+        uint8_t g = ((color + 1) >> 1) & 1;
+        uint8_t b = ((color + 1) >> 2) & 1;
+        set_color(RGB(r, g, b));
     }
 }
 

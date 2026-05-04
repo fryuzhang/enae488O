@@ -141,7 +141,7 @@ void loop()
         {
             /* Robot 6: right side of mouth. */
             set_motion(FORWARD);
-            delay(3500);
+            delay(4250);
 
             set_motion(STOP);
             movement_done = 1;

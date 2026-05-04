@@ -6,10 +6,13 @@
 #define RIGHT   3
 
 uint8_t cur_motion = STOP;
-uint8_t kilo_made_it = 0;
+
+/* Tracks whether this Kilobot has already completed its movement path. */
+uint8_t movement_done = 0;
 
 void set_motion(uint8_t new_motion)
 {
+    /* Only update the motors if the motion command has changed. */
     if (cur_motion != new_motion) {
         cur_motion = new_motion;
 
@@ -38,7 +41,8 @@ void set_motion(uint8_t new_motion)
 
 void setup()
 {
-    kilo_made_it = 0;
+    /* At startup, no Kilobot has completed its motion yet. */
+    movement_done = 0;
 
     if (kilo_uid == 2) {
         set_color(RGB(1,0,1));   // kilobot 2 starts purple
@@ -55,16 +59,17 @@ void setup()
 
 void loop()
 {
-    if (kilo_made_it == 0)
+    /* Run the movement sequence only once. */
+    if (movement_done == 0)
     {
         if (kilo_uid == 2)
         {
+            /* Kilobot 2 movement path. */
             set_motion(FORWARD);
             delay(8000);
 
             set_motion(LEFT);
             delay(4000);
-
 
             set_motion(FORWARD);
             delay(7500);
@@ -72,17 +77,17 @@ void loop()
             set_motion(RIGHT);
             delay(2000);
 
-
             set_motion(FORWARD);
             delay(2000);
             
             set_motion(STOP);
-            kilo_made_it = 1;
+            movement_done = 1;
             set_color(RGB(1,1,1));
         }
 
         if (kilo_uid == 3)
         {
+            /* Kilobot 3 movement path. */
             set_motion(FORWARD);
             delay(9000);
 
@@ -96,17 +101,19 @@ void loop()
             delay(1000);
 
             set_motion(STOP);
-            kilo_made_it = 1;
+            movement_done = 1;
             set_color(RGB(1,1,1));
         }
 
         if (kilo_uid != 2 && kilo_uid != 3)
         {
+            /* Non-moving Kilobots stay stopped. */
             set_motion(STOP);
         }
     }
 
-    if (kilo_made_it == 1)
+    /* Once finished, stay stopped. */
+    if (movement_done == 1)
     {
         set_motion(STOP);
     }

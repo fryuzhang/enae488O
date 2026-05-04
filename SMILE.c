@@ -108,7 +108,7 @@ void loop()
         {
             /* Robot 3: middle of mouth. */
             set_motion(FORWARD);
-            delay(15000);
+            delay(19000);
 
             set_motion(STOP);
             movement_done = 1;
@@ -120,7 +120,7 @@ void loop()
         {
             /* Robot 4: nose. */
             set_motion(FORWARD);
-            delay(5000);
+            delay(4500);
 
             set_motion(STOP);
             movement_done = 1;
@@ -141,7 +141,7 @@ void loop()
         {
             /* Robot 6: right side of mouth. */
             set_motion(FORWARD);
-            delay(5000);
+            delay(3500);
 
             set_motion(STOP);
             movement_done = 1;

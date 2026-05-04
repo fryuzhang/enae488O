@@ -108,7 +108,7 @@ void loop()
         {
             /* Robot 3: middle of mouth. */
             set_motion(FORWARD);
-            delay(9000);
+            delay(15000);
 
             set_motion(STOP);
             movement_done = 1;

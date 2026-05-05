@@ -87,8 +87,9 @@ void loop()
         {
             /* Robot 1: left side of mouth. */
             set_motion(FORWARD);
-            delay(12000);
-
+            delay(8000);
+            
+            
             set_motion(STOP);
             movement_done = 1;
             set_color(RGB(1,1,1));   // white: movement finished
@@ -108,8 +109,15 @@ void loop()
         {
             /* Robot 3: middle of mouth. */
             set_motion(FORWARD);
-            delay(19000);
-
+            delay(10000);
+            
+            set_motion(RIGHT);
+            delay(750);
+            
+            set_motion(FORWARD);
+            delay(5000);
+          
+            
             set_motion(STOP);
             movement_done = 1;
             set_color(RGB(1,1,1));   // white: movement finished
@@ -119,9 +127,11 @@ void loop()
         if (kilo_uid == 4)
         {
             /* Robot 4: nose. */
-            set_motion(FORWARD);
             delay(5000);
-
+            
+            set_motion(FORWARD);
+            delay(9000);
+          
             set_motion(STOP);
             movement_done = 1;
             set_color(RGB(1,0,1));   // purple: nose final color
@@ -141,7 +151,8 @@ void loop()
         {
             /* Robot 6: right side of mouth. */
             set_motion(FORWARD);
-            delay(5000);
+            delay(8000);
+            
 
             set_motion(STOP);
             movement_done = 1;
@@ -154,11 +165,6 @@ void loop()
     if (movement_done == 1)
     {
         set_motion(STOP);
-        uint8_t color = (kilo_ticks / 32) % 7;
-        uint8_t r = (color + 1) & 1;
-        uint8_t g = ((color + 1) >> 1) & 1;
-        uint8_t b = ((color + 1) >> 2) & 1;
-        set_color(RGB(r, g, b));
     }
 }
 

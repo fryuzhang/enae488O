@@ -2,7 +2,7 @@
 
 #define TOTAL_NUM 5
 
-typedef enum{PHASE1, PHASE2} phase_t;
+typedef enum{PHASE1, PHASE2} phase_t; phase_t current_phase;
 
 /* Here local refers to list managed by the individual kilobot, 
  * not kilobots that it can directly communicate with 
@@ -74,6 +74,8 @@ void update_message() {
     }
 
     msg.data[7] = disown;
+
+    msg.crc = message_crc(&msg);
 }
 
 message_t *message_tx(){
@@ -107,6 +109,18 @@ void remove_dependencies(){
     // remove it as a depend and tell all kilobots to remove
     // it from the global list
 
+
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+    ///////////////////////////////////////
+
+
+    // Do after adding works
 }
 
 
@@ -157,4 +171,17 @@ uint8_t check_global_size(){
         if (kilo_list[i] != 0) global_count++;
     }
     return global_count;
+}
+
+void setup() {
+    msg.type = NORMAL;
+    current_phase = PHASE1;
+}
+
+void loop(){
+    if(current_phase == PHASE1){
+
+    } else{
+
+    }
 }

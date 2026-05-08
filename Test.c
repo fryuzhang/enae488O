@@ -1,4 +1,4 @@
-#include "kilolib.h"
+#include <kilolib.h>
 
 // Configuration constants
 #define STABLE_THRESHOLD 30

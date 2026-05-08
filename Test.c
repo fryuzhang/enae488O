@@ -1,25 +1,20 @@
 #include "kilolib.h"
 
-#define STABLE_THRESHOLD 30        
-#define FLASH_DURATION 320         
-#define FLOOD_CYCLES 50           
+#define STABLE_THRESHOLD 30
+#define FLASH_DURATION 320
+#define FLOOD_CYCLES 50
 #define MAX_UIDS 5
 #define MAX_NEIGHBORS 4
-#define NEIGHBOR_TIMEOUT 96       
+#define NEIGHBOR_TIMEOUT 96
 
-typedef enum {
-    GRAPH_MODE,
-    LINE_CHECK,
-    LINE_MODE,
-    FLASHING,
-    DRIVING_AWAY,
-    ISOLATED
-} robot_state_t;
-
-typedef enum {
-    MSG_UID_SET,
-    MSG_NEIGHBOR_COUNT
-} message_type_t;
+#define GRAPH_MODE 0
+#define LINE_CHECK 1
+#define LINE_MODE 2
+#define FLASHING 3
+#define DRIVING_AWAY 4
+#define ISOLATED 5
+#define MSG_UID_SET 0
+#define MSG_NEIGHBOR_COUNT 1
 
 typedef struct {
     uint16_t uid;
@@ -27,7 +22,7 @@ typedef struct {
     uint8_t timestamp;
 } neighbor_info_t;
 
-robot_state_t mode;
+uint8_t mode;
 uint16_t my_uid;
 uint16_t known_uids[MAX_UIDS];
 uint8_t known_uid_count;
@@ -41,15 +36,14 @@ uint8_t current_tick;
 neighbor_info_t neighbors[MAX_NEIGHBORS];
 uint8_t neighbor_count;
 
-typedef struct {
-    uint8_t type;
-    uint16_t uid;
-    uint16_t uids[MAX_UIDS];
-    uint8_t count;
-    uint8_t neighbor_count;
-} message_t;
+uint8_t tx_message[9];  
 
-message_t tx_message;
+void add_uid_to_known(uint16_t uid);
+void update_neighbor(uint16_t uid, uint8_t nc);
+void prune_old_neighbors(void);
+uint8_t count_direct_neighbors(void);
+void set_color_by_size(uint8_t size);
+void check_if_line(void);
 
 void add_uid_to_known(uint16_t uid) {
     uint8_t i;
@@ -79,7 +73,7 @@ void update_neighbor(uint16_t uid, uint8_t nc) {
     }
 }
 
-void prune_old_neighbors() {
+void prune_old_neighbors(void) {
     uint8_t i, j;
     for (i = 0; i < neighbor_count; i++) {
         if ((uint8_t)(current_tick - neighbors[i].timestamp) > NEIGHBOR_TIMEOUT) {
@@ -92,23 +86,23 @@ void prune_old_neighbors() {
     }
 }
 
-uint8_t count_direct_neighbors() {
+uint8_t count_direct_neighbors(void) {
     prune_old_neighbors();
     return neighbor_count;
 }
 
 void set_color_by_size(uint8_t size) {
     switch (size) {
-        case 1: set_color(RGB(3, 3, 3)); break;      // White
-        case 2: set_color(RGB(3, 0, 0)); break;      // Red
-        case 3: set_color(RGB(3, 3, 0)); break;      // Yellow
-        case 4: set_color(RGB(0, 3, 0)); break;      // Green
-        case 5: set_color(RGB(0, 0, 3)); break;      // Blue
-        default: set_color(RGB(0, 0, 0)); break;     
+        case 1: set_color(RGB(3, 3, 3)); break;
+        case 2: set_color(RGB(3, 0, 0)); break;
+        case 3: set_color(RGB(3, 3, 0)); break;
+        case 4: set_color(RGB(0, 3, 0)); break;
+        case 5: set_color(RGB(0, 0, 3)); break;
+        default: set_color(RGB(0, 0, 0)); break;
     }
 }
 
-void check_if_line() {
+void check_if_line(void) {
     uint8_t i;
     uint8_t max_neighbor_count;
     
@@ -131,26 +125,61 @@ void check_if_line() {
 
 void message_rx(message_t *msg, distance_measurement_t *dist) {
     uint8_t i;
+    uint8_t msg_type = msg->data[0];
     
-    if (msg->type == MSG_UID_SET) {
-        for (i = 0; i < msg->count; i++) {
-            add_uid_to_known(msg->uids[i]);
+    if (msg_type == MSG_UID_SET) {
+        uint16_t sender_uid = (msg->data[1] << 8) | msg->data[2];
+        uint8_t uid_count = msg->data[3];
+        
+        update_neighbor(sender_uid, 0);
+        
+        for (i = 0; i < uid_count && i < 3; i++) {
+            uint16_t uid = (msg->data[4 + i*2] << 8) | msg->data[5 + i*2];
+            add_uid_to_known(uid);
         }
-        update_neighbor(msg->uid, 0);
     } 
-    else if (msg->type == MSG_NEIGHBOR_COUNT) {
-        update_neighbor(msg->uid, msg->neighbor_count);
+    else if (msg_type == MSG_NEIGHBOR_COUNT) {
+        uint16_t sender_uid = (msg->data[1] << 8) | msg->data[2];
+        uint8_t nc = msg->data[3];
+        update_neighbor(sender_uid, nc);
     }
 }
 
-message_t *message_tx() {
-    return &tx_message;
+message_t *message_tx(void) {
+    return (message_t *)&tx_message;
 }
 
-void message_tx_success() {
+void message_tx_success(void) {
 }
 
-void setup() {
+void prepare_message(void) {
+    uint8_t i;
+    
+    if (mode == GRAPH_MODE) {
+        tx_message[0] = MSG_UID_SET;
+        tx_message[1] = (my_uid >> 8) & 0xFF;
+        tx_message[2] = my_uid & 0xFF;
+        tx_message[3] = known_uid_count;
+        
+        for (i = 0; i < known_uid_count && i < 3; i++) {
+            tx_message[4 + i*2] = (known_uids[i] >> 8) & 0xFF;
+            tx_message[5 + i*2] = known_uids[i] & 0xFF;
+        }
+    }
+    else if (mode == LINE_CHECK || mode == LINE_MODE) {
+        tx_message[0] = MSG_NEIGHBOR_COUNT;
+        tx_message[1] = (my_uid >> 8) & 0xFF;
+        tx_message[2] = my_uid & 0xFF;
+        tx_message[3] = my_neighbor_count;
+        tx_message[4] = 0;
+        tx_message[5] = 0;
+        tx_message[6] = 0;
+        tx_message[7] = 0;
+        tx_message[8] = 0;
+    }
+}
+
+void setup(void) {
     mode = GRAPH_MODE;
     my_uid = kilo_uid;
     known_uid_count = 0;
@@ -166,112 +195,93 @@ void setup() {
     known_uid_count = 1;
     prev_size = 1;
     
-    set_color(RGB(3, 3, 3));  
+    set_color(RGB(3, 3, 3));
 }
 
-void loop() {
+// Main loop
+void loop(void) {
     uint8_t graph_size;
-    uint8_t i;
     
     current_tick++;
     
-    switch (mode) {
-        case GRAPH_MODE:
-            tx_message.type = MSG_UID_SET;
-            tx_message.uid = my_uid;
-            tx_message.count = known_uid_count;
-            for (i = 0; i < known_uid_count; i++) {
-                tx_message.uids[i] = known_uids[i];
-            }
-            graph_size = known_uid_count;
-           
-            if (graph_size == prev_size) {
-                stable_count++;
-            } else {
-                stable_count = 0;
-                prev_size = graph_size;
-            }
-           
-            if (stable_count >= STABLE_THRESHOLD) {
-                set_color_by_size(graph_size);
-                stable_count = 0;
-                
-                if (graph_size == 5) {
-                    mode = LINE_CHECK;
-                    flood_counter = 0;
-                }
-            }
-            break;
+    if (mode == GRAPH_MODE) {
+        prepare_message();
         
-        case LINE_CHECK:
-            my_neighbor_count = count_direct_neighbors();
-            tx_message.type = MSG_NEIGHBOR_COUNT;
-            tx_message.uid = my_uid;
-            tx_message.neighbor_count = my_neighbor_count;
-            
-            flood_counter++;
-            if (flood_counter >= FLOOD_CYCLES) {
-                check_if_line();
-                if (mode == LINE_CHECK) {
-                    mode = GRAPH_MODE;
-                }
-            }
-            break;
+        graph_size = known_uid_count;
         
-        case LINE_MODE:
-            my_neighbor_count = count_direct_neighbors();
-            tx_message.type = MSG_NEIGHBOR_COUNT;
-            tx_message.uid = my_uid;
-            tx_message.neighbor_count = my_neighbor_count;
+        if (graph_size == prev_size) {
+            stable_count++;
+        } else {
+            stable_count = 0;
+            prev_size = graph_size;
+        }
+        
+        if (stable_count >= STABLE_THRESHOLD) {
+            set_color_by_size(graph_size);
+            stable_count = 0;
             
-            if (my_neighbor_count >= 3) {
+            if (graph_size == 5) {
+                mode = LINE_CHECK;
+                flood_counter = 0;
+            }
+        }
+    }
+    else if (mode == LINE_CHECK) {
+        my_neighbor_count = count_direct_neighbors();
+        prepare_message();
+        
+        flood_counter++;
+        if (flood_counter >= FLOOD_CYCLES) {
+            check_if_line();
+            if (mode == LINE_CHECK) {
                 mode = GRAPH_MODE;
-                break;
             }
-            
-            if (my_neighbor_count <= 1) {
-                if (known_uid_count == 1) {
-                    set_color(RGB(0, 0, 3));  // Blue
-                    mode = ISOLATED;
-                } else {
-                    mode = FLASHING;
-                    flash_counter = 0;
-                }
-            }
-            break;
+        }
+    }
+    else if (mode == LINE_MODE) {
+        my_neighbor_count = count_direct_neighbors();
+        prepare_message();
         
-        case FLASHING:
-            if (flash_counter < FLASH_DURATION) {
-                if ((flash_counter / 16) % 2 == 0) {
-                    set_color(RGB(3, 3, 3));  // White
-                } else {
-                    set_color(RGB(0, 0, 0));  // Off
-                }
-                flash_counter++;
+        if (my_neighbor_count >= 3) {
+            mode = GRAPH_MODE;
+        }
+        else if (my_neighbor_count <= 1) {
+            if (known_uid_count == 1) {
+                set_color(RGB(0, 0, 3));
+                mode = ISOLATED;
             } else {
-                mode = DRIVING_AWAY;
-                set_motors(kilo_straight_left, kilo_straight_right);
+                mode = FLASHING;
+                flash_counter = 0;
             }
-            break;
-        
-        case DRIVING_AWAY:
-            if (count_direct_neighbors() == 0) {
-                set_motors(0, 0);
-                known_uid_count = 1;
-                known_uids[0] = my_uid;
-                neighbor_count = 0;
-                mode = GRAPH_MODE;
-                stable_count = 0;
-                prev_size = 1;
+        }
+    }
+    else if (mode == FLASHING) {
+        if (flash_counter < FLASH_DURATION) {
+            if ((flash_counter / 16) % 2 == 0) {
+                set_color(RGB(3, 3, 3));
+            } else {
+                set_color(RGB(0, 0, 0));
             }
-            break;
-        
-        case ISOLATED:
-            break;
+            flash_counter++;
+        } else {
+            mode = DRIVING_AWAY;
+            set_motors(kilo_straight_left, kilo_straight_right);
+        }
+    }
+    else if (mode == DRIVING_AWAY) {
+        if (count_direct_neighbors() == 0) {
+            set_motors(0, 0);
+            known_uid_count = 1;
+            known_uids[0] = my_uid;
+            neighbor_count = 0;
+            mode = GRAPH_MODE;
+            stable_count = 0;
+            prev_size = 1;
+        }
     }
 }
 
-int main() {
+int main(void) {
     kilo_init();
     kilo_message_rx = message_rx;
     kilo_message_tx = message_tx;

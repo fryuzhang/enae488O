@@ -13,6 +13,7 @@
 
 #define PHASE2_FLASH_TIME 10 * TICKS_PER_SEC
 #define PHASE2_OUT_OF_RANGE_TIME 2 * TICKS_PER_SEC
+#define PHASE2_REBUILD_TIME 4 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
@@ -42,19 +43,16 @@ uint32_t disown_start_tick = 0;
 
 uint8_t exile_blacklist[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
-// flag set when this bot learns it has been exiled
 uint8_t is_exiled = 0;
 uint8_t is_end = 0;
 
-// tick when this bot first observed a full-size swarm
 uint32_t full_size_start_tick = 0;
-
-// last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
 
 uint8_t cur_motion = STOP;
 uint32_t phase2_flash_start_tick = 0;
 uint32_t phase2_no_neighbor_start_tick = 0;
+uint32_t phase2_start_tick = 0;
 
 void set_motion(uint8_t new_motion)
 {
@@ -85,29 +83,25 @@ void set_motion(uint8_t new_motion)
 }
 
 void update_color(uint8_t kilo_count){
-    // if (revolution){
-    //     set_color(RGB(1, 0, 1));
-    //     return;
-    // }
     switch (kilo_count)
     {
     case 1:
-        set_color(RGB(1,1,1)); // white
+        set_color(RGB(1,1,1));
         break;
     case 2:
-        set_color(RGB(1, 0, 0)); // red
+        set_color(RGB(1, 0, 0));
         break;
     case 3:
-        set_color(RGB(1, 1, 0)); // yellow
+        set_color(RGB(1, 1, 0));
         break;
     case 4:
-        set_color(RGB(0, 1, 0)); // green
+        set_color(RGB(0, 1, 0));
         break;
     case 5:
-        set_color(RGB(0, 0, 1)); // blue
+        set_color(RGB(0, 0, 1));
         break;
     default:
-        set_color(RGB(1, 0, 1)); // magenta for troubleshooting
+        set_color(RGB(1, 0, 1));
         break;
     }
 }
@@ -216,7 +210,6 @@ void remove_dependencies(){
     }
 
     if (exile_target != 0) {
-        // check if this bot itself has been exiled
         if (exile_target == kilo_uid) {
             is_exiled = 1;
             return;
@@ -360,19 +353,10 @@ uint8_t phase2_is_end_robot(){
 
     if(current_size <= 1) return 0;
 
-    /*
-     * Normal line case:
-     * An end robot hears exactly one active neighbor.
-     */
     if(current_size > 2 && neighbor_count == 1){
         return 1;
     }
 
-    /*
-     * Safety case:
-     * If only two robots are left, both are technically ends.
-     * Only the lower UID drives away so one robot remains.
-     */
     if(current_size == 2 && neighbor_count == 1){
         if(kilo_uid == phase2_lowest_active_uid()){
             return 1;
@@ -403,6 +387,7 @@ void setup() {
     cur_motion = STOP;
     phase2_flash_start_tick = 0;
     phase2_no_neighbor_start_tick = 0;
+    phase2_start_tick = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
@@ -412,7 +397,6 @@ void setup() {
 }
 
 void loop(){
-    // exiled bots freeze as white and do nothing else
     if (is_exiled) {
         set_color(RGB(1, 1, 1));
         return;
@@ -425,7 +409,7 @@ void loop(){
 
         if(new_message){
             new_message = 0;
-            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
+            last_heard_tick = kilo_ticks;
             add_dependencies();
             validate_inclusion();
         }
@@ -446,15 +430,14 @@ void loop(){
         update_message();
         update_color(current_size);
 
-        // if isolated after revolution, switch into phase 2
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            set_color(RGB(1, 1, 0));
             current_phase = PHASE2;
             phase2_state = P2_WAITING;
+            phase2_start_tick = kilo_ticks;
             set_motion(STOP);
             
-            // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
             disown_start_tick = 0;
@@ -476,10 +459,6 @@ void loop(){
             update_message();
         }
 
-        // if(revolution == 1 && current_size == 1){
-        //     current_phase = PHASE2;
-        // }
-
     } else { // phase 2
 
         if(new_message){
@@ -492,15 +471,18 @@ void loop(){
             }
         }
 
-        /*
-         * While driving away or gone, this robot should not run the normal
-         * remove logic on itself. Remaining robots still run removal.
-         */
         if(phase2_state != P2_DRIVING && phase2_state != P2_GONE){
             remove_dependencies();
         }
 
         uint8_t current_size = check_global_size();
+
+        if((kilo_ticks - phase2_start_tick) < PHASE2_REBUILD_TIME){
+            set_motion(STOP);
+            update_message();
+            update_color(current_size);
+            return;
+        }
 
         if(phase2_state == P2_GONE){
             set_motion(STOP);

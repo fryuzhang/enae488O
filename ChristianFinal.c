@@ -1,10 +1,10 @@
 #include "kilolib.h"
 
 #define TOTAL_NUM 5
-#define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
-#define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
-#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
-#define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
+#define DEPENDENT_TIMEOUT 4 * TICKS_PER_SEC
+#define REVOLUTION_START_TIME 6 * TICKS_PER_SEC
+#define ISOLATION_TIMEOUT 4 * TICKS_PER_SEC  // self-exile if no message heard for this long
+#define DISOWN_BROADCAST_TIME 4 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;

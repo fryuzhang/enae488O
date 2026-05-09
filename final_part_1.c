@@ -5,7 +5,7 @@
 #define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
 #define ISOLATION_TIMEOUT 4 * TICKS_PER_SEC  // self-exile if no message heard for this long
 #define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
-#define FLASH_TIME 10 * TICKS_PER_SEC
+#define FLASH_TIME 5 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
@@ -386,16 +386,29 @@ void loop(){
 
         // break line logic
 
-        if(break_line){
-            // have kilo 1 and 2 flash white for 10 seconds, then leave
-            if(kilo_uid == 1 || kilo_uid == 2){
-                // flash white for 10 seconds
-                if(kilo_ticks - flash_start_tick < FLASH_TIME){
-                    set_color(RGB(1, 1, 1));
-                    return;
-                }
-                set_motors(kilo_straight_left, kilo_straight_right);
+        if (break_line > 0) {
+            uint32_t elapsed_time = kilo_ticks - flash_start_tick;
 
+            // Kilos 1 and 2 Sequence
+            if (kilo_uid == 1 || kilo_uid == 2) {
+                if (elapsed_time < FLASH_TIME) {
+                    set_color(RGB(1, 1, 1)); // Flash for the first 10 seconds
+                } else {
+                    spinup_motors();
+                    set_motors(kilo_straight_left, kilo_straight_right); // Move forever after 10s
+                }
+            }
+
+            // Kilos 3 and 4 Sequence
+            if (kilo_uid == 3 || kilo_uid == 4) {
+                if (elapsed_time >= FLASH_TIME && elapsed_time < (FLASH_TIME * 2)) {
+                    // Wait until 1 and 2 start moving (10s mark), THEN flash for 10 seconds
+                    set_color(RGB(1, 1, 1)); 
+                } else if (elapsed_time >= (FLASH_TIME * 2)) {
+                    // Start moving after flashing finishes (20s mark)
+                    spinup_motors();
+                    set_motors(kilo_straight_left, kilo_straight_right);
+                }
             }
         }
 

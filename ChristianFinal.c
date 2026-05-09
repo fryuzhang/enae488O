@@ -1,21 +1,14 @@
 #include "kilolib.h"
 
 #define TOTAL_NUM 5
-#define DEPENDENT_TIMEOUT 4 * TICKS_PER_SEC
-#define REVOLUTION_START_TIME 6 * TICKS_PER_SEC
+#define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
+#define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
 #define ISOLATION_TIMEOUT 4 * TICKS_PER_SEC  // self-exile if no message heard for this long
-#define DISOWN_BROADCAST_TIME 4 * TICKS_PER_SEC
+#define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
+#define FLASH_TIME 2 * TICKS_PER_SEC
+#define FLASH_BLINK_PERIOD (TICKS_PER_SEC / 2)
 
-#define STOP    0
-#define FORWARD 1
-#define LEFT    2
-#define RIGHT   3
-
-#define PHASE2_READY_TIME 2 * TICKS_PER_SEC
-#define PHASE3_FLASH_TIME 10 * TICKS_PER_SEC
-#define PHASE3_OUT_OF_RANGE_TIME 2 * TICKS_PER_SEC
-
-typedef enum { PHASE1, PHASE2, PHASE3 } phase_t;
+typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
 
 typedef struct {
@@ -50,47 +43,9 @@ uint32_t full_size_start_tick = 0;
 // last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
 
-// motion variables
-uint8_t cur_motion = STOP;
+uint32_t flash_start_tick = 0;
 
-// phase 2 variables
-uint32_t phase2_ready_start_tick = 0;
-
-// phase 3 variables
-uint8_t phase3_flashing = 0;
-uint8_t phase3_driving_away = 0;
-uint8_t phase3_gone = 0;
-
-uint32_t phase3_flash_start_tick = 0;
-uint32_t phase3_no_neighbor_start_tick = 0;
-
-void set_motion(uint8_t new_motion)
-{
-    if (cur_motion != new_motion) {
-        cur_motion = new_motion;
-
-        switch (cur_motion) {
-            case STOP:
-                set_motors(0, 0);
-                break;
-
-            case FORWARD:
-                spinup_motors();
-                set_motors(kilo_straight_left, kilo_straight_right);
-                break;
-
-            case LEFT:
-                spinup_motors();
-                set_motors(kilo_turn_left, 0);
-                break;
-
-            case RIGHT:
-                spinup_motors();
-                set_motors(0, kilo_turn_right);
-                break;
-        }
-    }
-}
+uint8_t break_line = 0;
 
 void update_color(uint8_t kilo_count){
     // if (revolution){
@@ -120,17 +75,9 @@ void update_color(uint8_t kilo_count){
     }
 }
 
-void phase3_flash_white(){
-    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
+void flash_white_clear(){
+    if(((kilo_ticks / FLASH_BLINK_PERIOD) % 2) == 0){
         set_color(RGB(1, 1, 1));
-    } else {
-        set_color(RGB(0, 0, 0));
-    }
-}
-
-void phase3_flash_blue(){
-    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
-        set_color(RGB(0, 0, 1));
     } else {
         set_color(RGB(0, 0, 0));
     }
@@ -313,106 +260,15 @@ uint8_t check_global_size(){
     return global_count;
 }
 
-uint8_t phase3_id_active(uint8_t id){
-    if(id == 0) return 0;
-    if(is_blacklisted(id)) return 0;
-
-    for(uint8_t i = 0; i < TOTAL_NUM; i++){
-        if(kilo_list[i] == id){
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-uint8_t phase3_count_neighbors(){
-    uint8_t count = 0;
-
-    for(uint8_t i = 0; i < TOTAL_NUM; i++){
-        uint8_t id = dependents[i].name;
-
-        if(id == 0) continue;
-        if(id == kilo_uid) continue;
-        if(is_blacklisted(id)) continue;
-        if(!phase3_id_active(id)) continue;
-
-        if((kilo_ticks - dependents[i].age) <= DEPENDENT_TIMEOUT){
-            count++;
-        }
-    }
-
-    return count;
-}
-
-uint8_t phase3_lowest_active_uid(){
-    uint8_t lowest = 0;
-
-    for(uint8_t i = 0; i < TOTAL_NUM; i++){
-        uint8_t id = kilo_list[i];
-
-        if(id == 0) continue;
-        if(is_blacklisted(id)) continue;
-
-        if(lowest == 0 || id < lowest){
-            lowest = id;
-        }
-    }
-
-    return lowest;
-}
-
-uint8_t phase3_is_end_robot(){
-    uint8_t current_size = check_global_size();
-    uint8_t neighbor_count = phase3_count_neighbors();
-
-    if(current_size <= 1) return 0;
-
-    if(current_size > 2 && neighbor_count == 1){
-        return 1;
-    }
-
-    /*
-     * If only two robots remain, both are ends.
-     * Only the lower UID leaves so one final robot remains.
-     */
-    if(current_size == 2 && neighbor_count == 1){
-        if(kilo_uid == phase3_lowest_active_uid()){
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-void phase3_remove_self_from_list(){
-    for(uint8_t i = 0; i < TOTAL_NUM; i++){
-        if(kilo_list[i] == kilo_uid){
-            kilo_list[i] = 0;
-        }
-    }
-}
-
 void setup() {
     msg.type = NORMAL;
     current_phase = PHASE1;
-
     is_exiled = 0;
-    is_end = 0;
-
     full_size_start_tick = 0;
     last_heard_tick = 0;
     disown_start_tick = 0;
-
-    cur_motion = STOP;
-
-    phase2_ready_start_tick = 0;
-
-    phase3_flashing = 0;
-    phase3_driving_away = 0;
-    phase3_gone = 0;
-    phase3_flash_start_tick = 0;
-    phase3_no_neighbor_start_tick = 0;
+    flash_start_tick = 0;
+    break_line = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
@@ -422,18 +278,14 @@ void setup() {
         dependents[i].age = 0;
     }
     kilo_list[0] = kilo_uid;
-
-    update_message();
 }
 
 void loop(){
     // exiled bots freeze as white and do nothing else
     if (is_exiled) {
-        set_motion(STOP);
         set_color(RGB(1, 1, 1));
         return;
     } else if (is_end) {
-        set_motion(STOP);
         set_color(RGB(0, 1, 1));
         return;
     }
@@ -468,7 +320,7 @@ void loop(){
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
             set_color(RGB(1, 1, 0)); // yellow — I am isolated
             current_phase = PHASE2;
-
+            
             // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
@@ -476,16 +328,9 @@ void loop(){
             to_exile = 0;
             disown = 0;
             new_message = 0;
-
-            phase2_ready_start_tick = 0;
-
-            phase3_flashing = 0;
-            phase3_driving_away = 0;
-            phase3_gone = 0;
-            phase3_flash_start_tick = 0;
-            phase3_no_neighbor_start_tick = 0;
-
-            set_motion(STOP);
+            revolution = 0;
+            break_line = 0;
+            flash_start_tick = 0;
 
             for (int i = 0; i < TOTAL_NUM; i++) {
                 kilo_list[i] = 0;
@@ -503,141 +348,85 @@ void loop(){
         //     current_phase = PHASE2;
         // }
 
-    } else if(current_phase == PHASE2) { // phase 2: rebuild add-code list
-
+    } else { // phase 2
+        
         if(new_message){
             new_message = 0;
-            last_heard_tick = kilo_ticks;
+            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
             add_dependencies();
             validate_inclusion();
         }
 
+        remove_dependencies();
+
         uint8_t current_size = check_global_size();
 
         update_message();
         update_color(current_size);
 
-        /*
-         * Do not enter phase 3 until this robot has rebuilt a full 5-robot list
-         * continuously for PHASE2_READY_TIME.
-         */
-        if(current_size >= TOTAL_NUM){
-            if(phase2_ready_start_tick == 0){
-                phase2_ready_start_tick = kilo_ticks;
+        if (current_size >= TOTAL_NUM) {
+            if (full_size_start_tick == 0) {
+                full_size_start_tick = kilo_ticks;
             }
-
-            if((kilo_ticks - phase2_ready_start_tick) >= PHASE2_READY_TIME){
-                current_phase = PHASE3;
+            if ((kilo_ticks - full_size_start_tick) >= REVOLUTION_START_TIME && break_line == 0) {
+                revolution = 1;
+                break_line = 1;
+                flash_start_tick = kilo_ticks;
             }
-        } else {
-            phase2_ready_start_tick = 0;
         }
 
-    } else { // phase 3: ends flash white, then drive away
-
-        if(new_message){
+        // if isolated after revolution, reset phase 2 add-code variables
+        if (revolution == 1 && last_heard_tick != 0 &&
+            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
+            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            current_phase = PHASE2;
+            
+            full_size_start_tick = 0;
+            last_heard_tick = 0;
+            disown_start_tick = 0;
+            to_exile = 0;
+            disown = 0;
             new_message = 0;
-            last_heard_tick = kilo_ticks;
+            revolution = 0;
+            break_line = 0;
+            flash_start_tick = 0;
 
-            if(phase3_gone == 0){
-                add_dependencies();
-                validate_inclusion();
+            for (int i = 0; i < TOTAL_NUM; i++) {
+                kilo_list[i] = 0;
+                rx_list[i] = 0;
+                exile_blacklist[i] = 0;
+                dependents[i].name = 0;
+                dependents[i].age = 0;
             }
-        }
-
-        /*
-         * Robots still in the line keep removing stale neighbors.
-         * A robot that is driving away should not remove itself through
-         * the normal dependency logic.
-         */
-        if(phase3_driving_away == 0 && phase3_gone == 0){
-            remove_dependencies();
-        }
-
-        uint8_t current_size = check_global_size();
-
-        if(phase3_gone == 1){
-            set_motion(STOP);
-            set_color(RGB(0, 0, 0));
-            update_message();
-            return;
-        }
-
-        /*
-         * Last robot flashes blue and does not drive away.
-         */
-        if(current_size == 1 && phase3_id_active(kilo_uid)){
-            set_motion(STOP);
-            phase3_flash_blue();
-            update_message();
-            return;
-        }
-
-        /*
-         * End robot flashes white for 10 seconds before driving away.
-         */
-        if(phase3_flashing == 1){
-            set_motion(STOP);
-            phase3_flash_white();
-
-            if((kilo_ticks - phase3_flash_start_tick) >= PHASE3_FLASH_TIME){
-                phase3_flashing = 0;
-                phase3_driving_away = 1;
-                phase3_no_neighbor_start_tick = 0;
-                set_motion(FORWARD);
-            }
+            kilo_list[0] = kilo_uid;
 
             update_message();
-            return;
         }
 
-        /*
-         * After flashing, end robot drives forward until it no longer hears
-         * active neighbors for PHASE3_OUT_OF_RANGE_TIME.
-         */
-        if(phase3_driving_away == 1){
-            set_motion(FORWARD);
-            set_color(RGB(1, 1, 1));
+        // break line logic
+        if (break_line > 0) {
+            uint32_t elapsed_time = kilo_ticks - flash_start_tick;
 
-            if(phase3_count_neighbors() == 0){
-                if(phase3_no_neighbor_start_tick == 0){
-                    phase3_no_neighbor_start_tick = kilo_ticks;
+            // Kilos 1 and 2 Sequence
+            if (kilo_uid == 1 || kilo_uid == 2) {
+                if (elapsed_time < FLASH_TIME) {
+                    flash_white_clear();
+                } else {
+                    spinup_motors();
+                    set_motors(kilo_straight_left, kilo_straight_right);
                 }
-
-                if((kilo_ticks - phase3_no_neighbor_start_tick) >= PHASE3_OUT_OF_RANGE_TIME){
-                    set_motion(STOP);
-                    phase3_driving_away = 0;
-                    phase3_gone = 1;
-                    phase3_remove_self_from_list();
-                    set_color(RGB(0, 0, 0));
-                }
-            } else {
-                phase3_no_neighbor_start_tick = 0;
             }
 
-            update_message();
-            return;
+            // Kilos 3 and 4 Sequence
+            if (kilo_uid == 3 || kilo_uid == 4) {
+                if (elapsed_time >= FLASH_TIME && elapsed_time < (FLASH_TIME * 2)) {
+                    flash_white_clear();
+                } else if (elapsed_time >= (FLASH_TIME * 2)) {
+                    spinup_motors();
+                    set_motors(kilo_straight_left, kilo_straight_right);
+                }
+            }
         }
-
-        /*
-         * A robot is an end if it has exactly one active neighbor.
-         * If only two robots remain, only the lower UID leaves so one robot remains.
-         */
-        if(phase3_is_end_robot()){
-            phase3_flashing = 1;
-            phase3_flash_start_tick = kilo_ticks;
-            set_motion(STOP);
-            phase3_flash_white();
-            update_message();
-            return;
-        }
-
-        /*
-         * Middle robots stay still.
-         */
-        set_motion(STOP);
-        update_color(current_size);
-        update_message();
     }
 }
 

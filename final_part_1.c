@@ -270,14 +270,14 @@ void loop(){
             add_dependencies();
             validate_inclusion();
         }
-        remove_dependencies();
+        // remove_dependencies();
 
         // if isolated after revolution, self-exile with yellow
-        if (revolution == 1 && last_heard_tick != 0 &&
-            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(1, 1, 0)); // yellow — I am isolated
-            is_exiled = 1;
-        }
+        // if (revolution == 1 && last_heard_tick != 0 &&
+        //     (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
+        //     set_color(RGB(1, 1, 0)); // yellow — I am isolated
+        //     is_exiled = 1;
+        // }
 
         // if(revolution == 1 && current_size == 1){
         //     current_phase = PHASE2;

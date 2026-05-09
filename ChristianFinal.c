@@ -11,7 +11,7 @@
 #define LEFT    2
 #define RIGHT   3
 
-#define PHASE2_REBUILD_TIME 4 * TICKS_PER_SEC
+#define PHASE2_READY_TIME 2 * TICKS_PER_SEC
 #define PHASE3_FLASH_TIME 10 * TICKS_PER_SEC
 #define PHASE3_OUT_OF_RANGE_TIME 2 * TICKS_PER_SEC
 
@@ -54,7 +54,7 @@ uint32_t last_heard_tick = 0;
 uint8_t cur_motion = STOP;
 
 // phase 2 variables
-uint32_t phase2_start_tick = 0;
+uint32_t phase2_ready_start_tick = 0;
 
 // phase 3 variables
 uint8_t phase3_flashing = 0;
@@ -406,7 +406,7 @@ void setup() {
 
     cur_motion = STOP;
 
-    phase2_start_tick = 0;
+    phase2_ready_start_tick = 0;
 
     phase3_flashing = 0;
     phase3_driving_away = 0;
@@ -476,7 +476,8 @@ void loop(){
             to_exile = 0;
             disown = 0;
             new_message = 0;
-            phase2_start_tick = kilo_ticks;
+
+            phase2_ready_start_tick = 0;
 
             phase3_flashing = 0;
             phase3_driving_away = 0;
@@ -516,8 +517,20 @@ void loop(){
         update_message();
         update_color(current_size);
 
-        if((kilo_ticks - phase2_start_tick) >= PHASE2_REBUILD_TIME){
-            current_phase = PHASE3;
+        /*
+         * Do not enter phase 3 until this robot has rebuilt a full 5-robot list
+         * continuously for PHASE2_READY_TIME.
+         */
+        if(current_size >= TOTAL_NUM){
+            if(phase2_ready_start_tick == 0){
+                phase2_ready_start_tick = kilo_ticks;
+            }
+
+            if((kilo_ticks - phase2_ready_start_tick) >= PHASE2_READY_TIME){
+                current_phase = PHASE3;
+            }
+        } else {
+            phase2_ready_start_tick = 0;
         }
 
     } else { // phase 3: ends flash white, then drive away

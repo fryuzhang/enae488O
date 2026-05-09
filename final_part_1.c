@@ -4,6 +4,7 @@
 #define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
 #define REVOLUTION_START_TIME 10 * TICKS_PER_SEC
 #define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
+#define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
@@ -26,10 +27,13 @@ uint8_t rx_list[TOTAL_NUM] = {0, 0, 0, 0, 0};
 dependent_t dependents[TOTAL_NUM] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
 
 uint8_t disown = 0;
+uint32_t disown_start_tick = 0;
+
 uint8_t exile_blacklist[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
 // flag set when this bot learns it has been exiled
 uint8_t is_exiled = 0;
+uint8_t is_end = 0;
 
 // tick when this bot first observed a full-size swarm
 uint32_t full_size_start_tick = 0;
@@ -66,6 +70,10 @@ void update_color(uint8_t kilo_count){
 }
 
 void update_message() {
+    if(disown != 0 && (kilo_ticks - disown_start_tick) > DISOWN_BROADCAST_TIME){
+        disown = 0;
+    }
+
     msg.data[0] = kilo_uid;
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
         msg.data[i+1] = kilo_list[i];
@@ -73,7 +81,6 @@ void update_message() {
     msg.data[6] = revolution;
     msg.data[7] = disown;
     msg.crc = message_crc(&msg);
-    disown = 0;
 }
 
 message_t *message_tx(){
@@ -147,6 +154,8 @@ void remove_dependencies(){
             if(dependents[i].name != 0) {
                 if ((kilo_ticks - dependents[i].age) > DEPENDENT_TIMEOUT) {
                     disown = dependents[i].name;
+                    disown_start_tick = kilo_ticks;
+
                     add_to_blacklist(dependents[i].name);
 
                     for(uint8_t j = 0; j < TOTAL_NUM; j++) {
@@ -168,6 +177,11 @@ void remove_dependencies(){
         if (exile_target == kilo_uid) {
             is_exiled = 1;
             return;
+        }
+
+        if(!is_blacklisted(exile_target)){
+            disown = exile_target;
+            disown_start_tick = kilo_ticks;
         }
 
         add_to_blacklist(exile_target);
@@ -238,6 +252,7 @@ void setup() {
     is_exiled = 0;
     full_size_start_tick = 0;
     last_heard_tick = 0;
+    disown_start_tick = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
@@ -250,6 +265,9 @@ void loop(){
     // exiled bots freeze as white and do nothing else
     if (is_exiled) {
         set_color(RGB(1, 1, 1));
+        return;
+    } else if (is_end) {
+        set_color(RGB(0, 1, 1));
         return;
     }
 
@@ -283,6 +301,18 @@ void loop(){
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
             set_color(RGB(1, 1, 0)); // yellow — I am isolated
             is_exiled = 1;
+            current_phase = PHASE2;
+            
+            // reset blacklist
+            full_size_start_tick = 0;
+            last_heard_tick = 0;
+            disown_start_tick = 0;
+
+            for (int i = 0; i < TOTAL_NUM; i++) {
+                kilo_list[i] = 0;
+                exile_blacklist[i] = 0;
+            }
+            kilo_list[0] = kilo_uid;
         }
 
         // if(revolution == 1 && current_size == 1){
@@ -290,6 +320,41 @@ void loop(){
         // }
 
     } else { // phase 2
+        if (is_exiled) {
+            set_color(RGB(1, 1, 1));
+            return;
+        }
+
+        if(new_message){
+            new_message = 0;
+            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
+            add_dependencies();
+            validate_inclusion();
+        }
+
+        remove_dependencies();
+
+        uint8_t current_size = check_global_size();
+
+        if (current_size >= TOTAL_NUM) {
+            if (full_size_start_tick == 0) {
+                full_size_start_tick = kilo_ticks;
+            }
+            if ((kilo_ticks - full_size_start_tick) >= REVOLUTION_START_TIME) {
+                revolution = 1;
+            }
+        }
+
+        update_message();
+        update_color(current_size);
+
+        // shutdown
+        if (revolution == 1 && last_heard_tick != 0 &&
+            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
+            set_color(RGB(0, 0, 0)); 
+            is_exiled = 1;
+            return;
+        }
 
     }
 }

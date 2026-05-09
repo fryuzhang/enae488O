@@ -416,7 +416,7 @@ void loop(){
         set_color(RGB(1, 1, 1));
         return;
 
-    /* End flag override. Currently this is not actively used in the break-line logic. */
+    /* End flag override. Currently, this is not actively used in the break-line logic, so we don't need it. */
     } else if (is_end) {
         set_motion(STOP);
         set_color(RGB(0, 1, 1));
@@ -594,7 +594,7 @@ void loop(){
             /*
              * Robot 5:
              * stays still as the final robot.
-             * It flashes blue only when the local list says it is alone.
+             * It flashes blue (NOT WHITE) only when the local list says it is alone.
              */
             if (kilo_uid == 5) {
                 set_motion(STOP);

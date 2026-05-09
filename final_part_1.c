@@ -1,41 +1,41 @@
-
 #include "kilolib.h"
 
 #define TOTAL_NUM 5
-#define DEPENDENT_TIMEOUT 64 // ~2 sec
+#define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
+#define REVOLUTION_START_TIME 10 * TICKS_PER_SEC
+#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
 
-// struct to track dependent kilobots and their last heard time
 typedef struct {
     uint8_t name;
     uint32_t age;
 } dependent_t;
 
-/* manage new messages and local list of kilobots */
 message_t msg;
 uint8_t new_message;
 uint8_t kilo_list[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
-/* kilobot to remove from global list as told by other kilobots */
 uint8_t to_exile;
 uint8_t revolution = 0;
 
-/* manage received id and list being shared */
 uint8_t rx_id;
 uint8_t rx_list[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
-/* manage the kilobots that this bot was responsible
- * for adding, and removing them from the list
-*/
 dependent_t dependents[TOTAL_NUM] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
 
-// kilobots that this kilobot added to the list and wants to remove
 uint8_t disown = 0;
-
-// blacklist to prevent re-adding exiled bots
 uint8_t exile_blacklist[TOTAL_NUM] = {0, 0, 0, 0, 0};
+
+// flag set when this bot learns it has been exiled
+uint8_t is_exiled = 0;
+
+// tick when this bot first observed a full-size swarm
+uint32_t full_size_start_tick = 0;
+
+// last tick this bot heard any message from a neighbor
+uint32_t last_heard_tick = 0;
 
 void update_color(uint8_t kilo_count){
     switch (kilo_count)
@@ -69,6 +69,7 @@ void update_message() {
     msg.data[6] = revolution;
     msg.data[7] = disown;
     msg.crc = message_crc(&msg);
+    disown = 0;
 }
 
 message_t *message_tx(){
@@ -76,7 +77,6 @@ message_t *message_tx(){
 }
 
 void message_rx(message_t *m, distance_measurement_t *d){
-    // reject messages with id 0 — 0 is the sentinel empty value
     if (m->data[0] == 0) return;
 
     rx_id = m->data[0];
@@ -114,11 +114,10 @@ void add_dependencies(){
     }
 }
 
-// prevent disowned children from being added to the family again
 void add_to_blacklist(uint8_t id){
     if (id == 0) return;
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
-        if(exile_blacklist[i] == id) return; // already blacklisted
+        if(exile_blacklist[i] == id) return;
     }
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
         if(exile_blacklist[i] == 0){
@@ -128,7 +127,6 @@ void add_to_blacklist(uint8_t id){
     }
 }
 
-// check if child has been blacklisted
 uint8_t is_blacklisted(uint8_t id){
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
         if(exile_blacklist[i] == id) return 1;
@@ -140,21 +138,16 @@ void remove_dependencies(){
     uint8_t exile_target = to_exile;
     to_exile = 0;
 
-    // handle disowning of own child
     if (revolution == 1) {
         for(uint8_t i = 0; i < TOTAL_NUM; i++){
             if(dependents[i].name != 0) {
-                // handle uint32 kilo_ticks wraparound
                 if ((kilo_ticks - dependents[i].age) > DEPENDENT_TIMEOUT) {
-
                     disown = dependents[i].name;
-
-                    // add to blacklist before removing
                     add_to_blacklist(dependents[i].name);
 
                     for(uint8_t j = 0; j < TOTAL_NUM; j++) {
                         if(kilo_list[j] == dependents[i].name) {
-                            kilo_list[j] = 0; // remove from local list
+                            kilo_list[j] = 0;
                         }
                     }
 
@@ -166,9 +159,13 @@ void remove_dependencies(){
         }
     }
 
-    // handle removing kilobots that have been expelled by other kilobots
     if (exile_target != 0) {
-        // add to blacklist so we don't re-add it later by accident
+        // check if this bot itself has been exiled
+        if (exile_target == kilo_uid) {
+            is_exiled = 1;
+            return;
+        }
+
         add_to_blacklist(exile_target);
 
         for(uint8_t i = 0; i < TOTAL_NUM; i++) {
@@ -184,7 +181,6 @@ void remove_dependencies(){
 }
 
 void validate_inclusion(){
-    // do not re-add exiled bots
     if (is_blacklisted(rx_id)) return;
 
     uint8_t already_in = 0;
@@ -203,8 +199,6 @@ void validate_inclusion(){
 
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
         if (rx_list[i] == 0) continue;
-
-        // skip any entries in the received list that are blacklisted
         if (is_blacklisted(rx_list[i])) continue;
 
         already_in = 0;
@@ -237,6 +231,9 @@ uint8_t check_global_size(){
 void setup() {
     msg.type = NORMAL;
     current_phase = PHASE1;
+    is_exiled = 0;
+    full_size_start_tick = 0;
+    last_heard_tick = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
@@ -246,33 +243,45 @@ void setup() {
 }
 
 void loop(){
+    // exiled bots freeze as white and do nothing else
+    if (is_exiled) {
+        set_color(RGB(1, 1, 1));
+        return;
+    }
+
     uint8_t current_size = check_global_size();
 
     if(current_phase == PHASE1){
-        if(current_size >= TOTAL_NUM){
-            revolution = 1;
+        if (current_size >= TOTAL_NUM) {
+            if (full_size_start_tick == 0) {
+                full_size_start_tick = kilo_ticks;
+            }
+            if ((kilo_ticks - full_size_start_tick) >= REVOLUTION_START_TIME) {
+                revolution = 1;
+            }
         }
 
         update_message();
-
-        // reset disown after it has been packed into the outgoing message
-        // so it broadcasts for exactly one message cycle and stops
-        disown = 0;
-
         update_color(current_size);
 
         if(new_message){
             new_message = 0;
+            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
             add_dependencies();
             validate_inclusion();
         }
         remove_dependencies();
 
-        // transition to PHASE2 when the count returns to 1
-        // (revolution completed — all other bots have been exiled)
-        if(revolution == 1 && current_size == 1){
-            current_phase = PHASE2;
+        // if isolated after revolution, self-exile with yellow
+        if (revolution == 1 && last_heard_tick != 0 &&
+            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
+            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            is_exiled = 1;
         }
+
+        // if(revolution == 1 && current_size == 1){
+        //     current_phase = PHASE2;
+        // }
 
     } else { // phase 2
 
@@ -286,4 +295,3 @@ int main(){
     kilo_start(setup, loop);
     return 0;
 }
-

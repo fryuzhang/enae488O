@@ -1,13 +1,17 @@
 #include "kilolib.h"
 
 #define TOTAL_NUM 5
-#define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
-#define REVOLUTION_START_TIME 10 * TICKS_PER_SEC
-#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
-#define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
+#define DEPENDENT_TIMEOUT (2 * TICKS_PER_SEC)
+#define REVOLUTION_START_TIME (10 * TICKS_PER_SEC)
+#define ISOLATION_TIMEOUT (2 * TICKS_PER_SEC)  // self-exile if no message heard for this long
+#define DISOWN_BROADCAST_TIME (2 * TICKS_PER_SEC)
+#define PHASE2_FLASH_TIME (10 * TICKS_PER_SEC)
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
+
+typedef enum { P2_ACTIVE, P2_FLASHING, P2_REMOVED, P2_LAST } phase2_state_t;
+phase2_state_t phase2_state;
 
 typedef struct {
     uint8_t name;
@@ -40,6 +44,8 @@ uint32_t full_size_start_tick = 0;
 // last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
 
+uint32_t phase2_flash_start_tick = 0;
+
 void update_color(uint8_t kilo_count){
     // if (revolution){
     //     set_color(RGB(1, 0, 1));
@@ -65,6 +71,39 @@ void update_color(uint8_t kilo_count){
     default:
         set_color(RGB(1, 0, 1)); // magenta for troubleshooting
         break;
+    }
+}
+
+void flash_white(){
+    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
+        set_color(RGB(1, 1, 1));
+    } else {
+        set_color(RGB(0, 0, 0));
+    }
+}
+
+void flash_blue(){
+    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
+        set_color(RGB(0, 0, 1));
+    } else {
+        set_color(RGB(0, 0, 0));
+    }
+}
+
+uint8_t id_in_kilo_list(uint8_t id){
+    for(uint8_t i = 0; i < TOTAL_NUM; i++){
+        if(kilo_list[i] == id){
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void remove_id_from_kilo_list(uint8_t id){
+    for(uint8_t i = 0; i < TOTAL_NUM; i++){
+        if(kilo_list[i] == id){
+            kilo_list[i] = 0;
+        }
     }
 }
 
@@ -148,7 +187,7 @@ void remove_dependencies(){
     uint8_t exile_target = to_exile;
     to_exile = 0;
 
-    if (revolution == 1) {
+    if (revolution == 1 && current_phase == PHASE1) {
         for(uint8_t i = 0; i < TOTAL_NUM; i++){
             if(dependents[i].name != 0) {
                 if ((kilo_ticks - dependents[i].age) > DEPENDENT_TIMEOUT) {
@@ -245,19 +284,128 @@ uint8_t check_global_size(){
     return global_count;
 }
 
+uint8_t count_active_neighbors(){
+    uint8_t neighbor_count = 0;
+
+    for(uint8_t i = 0; i < TOTAL_NUM; i++){
+        uint8_t neighbor_id = dependents[i].name;
+
+        if(neighbor_id == 0) continue;
+        if(neighbor_id == kilo_uid) continue;
+        if(is_blacklisted(neighbor_id)) continue;
+        if(!id_in_kilo_list(neighbor_id)) continue;
+
+        if((kilo_ticks - dependents[i].age) <= DEPENDENT_TIMEOUT){
+            neighbor_count++;
+        }
+    }
+
+    return neighbor_count;
+}
+
+uint8_t is_end_robot(){
+    uint8_t current_size = check_global_size();
+    uint8_t neighbor_count = count_active_neighbors();
+
+    if(current_size <= 1) return 0;
+
+    if(neighbor_count == 1){
+        return 1;
+    }
+
+    return 0;
+}
+
+void phase2_remove_self(){
+    phase2_state = P2_REMOVED;
+
+    disown = kilo_uid;
+    disown_start_tick = kilo_ticks;
+
+    add_to_blacklist(kilo_uid);
+    remove_id_from_kilo_list(kilo_uid);
+
+    set_color(RGB(0, 0, 0));
+}
+
+void phase2_loop(){
+    if(new_message){
+        new_message = 0;
+        last_heard_tick = kilo_ticks;
+
+        if(phase2_state != P2_REMOVED){
+            add_dependencies();
+            validate_inclusion();
+        }
+    }
+
+    remove_dependencies();
+
+    uint8_t current_size = check_global_size();
+
+    if(phase2_state == P2_REMOVED){
+        set_color(RGB(0, 0, 0));
+        update_message();
+        return;
+    }
+
+    if(current_size == 1 && id_in_kilo_list(kilo_uid)){
+        phase2_state = P2_LAST;
+    }
+
+    if(phase2_state == P2_LAST){
+        flash_blue();
+        update_message();
+        return;
+    }
+
+    if(phase2_state == P2_FLASHING){
+        if((kilo_ticks - phase2_flash_start_tick) >= PHASE2_FLASH_TIME){
+            phase2_remove_self();
+        } else {
+            flash_white();
+        }
+
+        update_message();
+        return;
+    }
+
+    if(is_end_robot()){
+        phase2_state = P2_FLASHING;
+        phase2_flash_start_tick = kilo_ticks;
+        flash_white();
+    } else {
+        update_color(current_size);
+    }
+
+    update_message();
+}
+
 void setup() {
     msg.type = NORMAL;
     current_phase = PHASE1;
+    phase2_state = P2_ACTIVE;
+
     is_exiled = 0;
     full_size_start_tick = 0;
     last_heard_tick = 0;
+
+    disown = 0;
     disown_start_tick = 0;
+    phase2_flash_start_tick = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
+        rx_list[i] = 0;
         exile_blacklist[i] = 0;
+
+        dependents[i].name = 0;
+        dependents[i].age = 0;
     }
+
     kilo_list[0] = kilo_uid;
+
+    update_message();
 }
 
 void loop(){
@@ -265,6 +413,11 @@ void loop(){
     if (is_exiled) {
         set_color(RGB(1, 1, 1));
         return;
+    }
+
+    if(current_phase == PHASE1 && revolution == 1){
+        current_phase = PHASE2;
+        phase2_state = P2_ACTIVE;
     }
 
     if(current_phase == PHASE1){
@@ -304,6 +457,8 @@ void loop(){
         // }
 
     } else { // phase 2
+
+        phase2_loop();
 
     }
 }

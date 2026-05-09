@@ -11,15 +11,12 @@
 #define LEFT    2
 #define RIGHT   3
 
-#define PHASE2_FLASH_TIME 10 * TICKS_PER_SEC
-#define PHASE2_OUT_OF_RANGE_TIME 2 * TICKS_PER_SEC
 #define PHASE2_REBUILD_TIME 4 * TICKS_PER_SEC
+#define PHASE3_FLASH_TIME 10 * TICKS_PER_SEC
+#define PHASE3_OUT_OF_RANGE_TIME 2 * TICKS_PER_SEC
 
-typedef enum { PHASE1, PHASE2 } phase_t;
+typedef enum { PHASE1, PHASE2, PHASE3 } phase_t;
 phase_t current_phase;
-
-typedef enum { P2_WAITING, P2_FLASHING, P2_DRIVING, P2_GONE, P2_LAST } phase2_state_t;
-phase2_state_t phase2_state;
 
 typedef struct {
     uint8_t name;
@@ -43,16 +40,29 @@ uint32_t disown_start_tick = 0;
 
 uint8_t exile_blacklist[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
+// flag set when this bot learns it has been exiled
 uint8_t is_exiled = 0;
 uint8_t is_end = 0;
 
+// tick when this bot first observed a full-size swarm
 uint32_t full_size_start_tick = 0;
+
+// last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
 
+// motion variables
 uint8_t cur_motion = STOP;
-uint32_t phase2_flash_start_tick = 0;
-uint32_t phase2_no_neighbor_start_tick = 0;
+
+// phase 2 variables
 uint32_t phase2_start_tick = 0;
+
+// phase 3 variables
+uint8_t phase3_flashing = 0;
+uint8_t phase3_driving_away = 0;
+uint8_t phase3_gone = 0;
+
+uint32_t phase3_flash_start_tick = 0;
+uint32_t phase3_no_neighbor_start_tick = 0;
 
 void set_motion(uint8_t new_motion)
 {
@@ -83,26 +93,46 @@ void set_motion(uint8_t new_motion)
 }
 
 void update_color(uint8_t kilo_count){
+    // if (revolution){
+    //     set_color(RGB(1, 0, 1));
+    //     return;
+    // }
     switch (kilo_count)
     {
     case 1:
-        set_color(RGB(1,1,1));
+        set_color(RGB(1,1,1)); // white
         break;
     case 2:
-        set_color(RGB(1, 0, 0));
+        set_color(RGB(1, 0, 0)); // red
         break;
     case 3:
-        set_color(RGB(1, 1, 0));
+        set_color(RGB(1, 1, 0)); // yellow
         break;
     case 4:
-        set_color(RGB(0, 1, 0));
+        set_color(RGB(0, 1, 0)); // green
         break;
     case 5:
-        set_color(RGB(0, 0, 1));
+        set_color(RGB(0, 0, 1)); // blue
         break;
     default:
-        set_color(RGB(1, 0, 1));
+        set_color(RGB(1, 0, 1)); // magenta for troubleshooting
         break;
+    }
+}
+
+void phase3_flash_white(){
+    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
+        set_color(RGB(1, 1, 1));
+    } else {
+        set_color(RGB(0, 0, 0));
+    }
+}
+
+void phase3_flash_blue(){
+    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
+        set_color(RGB(0, 0, 1));
+    } else {
+        set_color(RGB(0, 0, 0));
     }
 }
 
@@ -210,6 +240,7 @@ void remove_dependencies(){
     }
 
     if (exile_target != 0) {
+        // check if this bot itself has been exiled
         if (exile_target == kilo_uid) {
             is_exiled = 1;
             return;
@@ -282,23 +313,7 @@ uint8_t check_global_size(){
     return global_count;
 }
 
-void phase2_flash_white(){
-    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
-        set_color(RGB(1, 1, 1));
-    } else {
-        set_color(RGB(0, 0, 0));
-    }
-}
-
-void phase2_flash_blue(){
-    if(((kilo_ticks / (TICKS_PER_SEC / 2)) % 2) == 0){
-        set_color(RGB(0, 0, 1));
-    } else {
-        set_color(RGB(0, 0, 0));
-    }
-}
-
-uint8_t phase2_id_active(uint8_t id){
+uint8_t phase3_id_active(uint8_t id){
     if(id == 0) return 0;
     if(is_blacklisted(id)) return 0;
 
@@ -311,7 +326,7 @@ uint8_t phase2_id_active(uint8_t id){
     return 0;
 }
 
-uint8_t phase2_count_neighbors(){
+uint8_t phase3_count_neighbors(){
     uint8_t count = 0;
 
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
@@ -320,7 +335,7 @@ uint8_t phase2_count_neighbors(){
         if(id == 0) continue;
         if(id == kilo_uid) continue;
         if(is_blacklisted(id)) continue;
-        if(!phase2_id_active(id)) continue;
+        if(!phase3_id_active(id)) continue;
 
         if((kilo_ticks - dependents[i].age) <= DEPENDENT_TIMEOUT){
             count++;
@@ -330,7 +345,7 @@ uint8_t phase2_count_neighbors(){
     return count;
 }
 
-uint8_t phase2_lowest_active_uid(){
+uint8_t phase3_lowest_active_uid(){
     uint8_t lowest = 0;
 
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
@@ -347,9 +362,9 @@ uint8_t phase2_lowest_active_uid(){
     return lowest;
 }
 
-uint8_t phase2_is_end_robot(){
+uint8_t phase3_is_end_robot(){
     uint8_t current_size = check_global_size();
-    uint8_t neighbor_count = phase2_count_neighbors();
+    uint8_t neighbor_count = phase3_count_neighbors();
 
     if(current_size <= 1) return 0;
 
@@ -357,8 +372,12 @@ uint8_t phase2_is_end_robot(){
         return 1;
     }
 
+    /*
+     * If only two robots remain, both are ends.
+     * Only the lower UID leaves so one final robot remains.
+     */
     if(current_size == 2 && neighbor_count == 1){
-        if(kilo_uid == phase2_lowest_active_uid()){
+        if(kilo_uid == phase3_lowest_active_uid()){
             return 1;
         }
     }
@@ -366,7 +385,7 @@ uint8_t phase2_is_end_robot(){
     return 0;
 }
 
-void phase2_remove_self_from_list(){
+void phase3_remove_self_from_list(){
     for(uint8_t i = 0; i < TOTAL_NUM; i++){
         if(kilo_list[i] == kilo_uid){
             kilo_list[i] = 0;
@@ -377,30 +396,44 @@ void phase2_remove_self_from_list(){
 void setup() {
     msg.type = NORMAL;
     current_phase = PHASE1;
-    phase2_state = P2_WAITING;
 
     is_exiled = 0;
+    is_end = 0;
+
     full_size_start_tick = 0;
     last_heard_tick = 0;
     disown_start_tick = 0;
 
     cur_motion = STOP;
-    phase2_flash_start_tick = 0;
-    phase2_no_neighbor_start_tick = 0;
+
     phase2_start_tick = 0;
+
+    phase3_flashing = 0;
+    phase3_driving_away = 0;
+    phase3_gone = 0;
+    phase3_flash_start_tick = 0;
+    phase3_no_neighbor_start_tick = 0;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
+        rx_list[i] = 0;
         exile_blacklist[i] = 0;
+        dependents[i].name = 0;
+        dependents[i].age = 0;
     }
     kilo_list[0] = kilo_uid;
+
+    update_message();
 }
 
 void loop(){
+    // exiled bots freeze as white and do nothing else
     if (is_exiled) {
+        set_motion(STOP);
         set_color(RGB(1, 1, 1));
         return;
     } else if (is_end) {
+        set_motion(STOP);
         set_color(RGB(0, 1, 1));
         return;
     }
@@ -409,7 +442,7 @@ void loop(){
 
         if(new_message){
             new_message = 0;
-            last_heard_tick = kilo_ticks;
+            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
             add_dependencies();
             validate_inclusion();
         }
@@ -430,22 +463,28 @@ void loop(){
         update_message();
         update_color(current_size);
 
+        // if isolated after revolution, switch into phase 2
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(1, 1, 0));
+            set_color(RGB(1, 1, 0)); // yellow — I am isolated
             current_phase = PHASE2;
-            phase2_state = P2_WAITING;
-            phase2_start_tick = kilo_ticks;
-            set_motion(STOP);
-            
+
+            // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
             disown_start_tick = 0;
             to_exile = 0;
             disown = 0;
             new_message = 0;
-            phase2_flash_start_tick = 0;
-            phase2_no_neighbor_start_tick = 0;
+            phase2_start_tick = kilo_ticks;
+
+            phase3_flashing = 0;
+            phase3_driving_away = 0;
+            phase3_gone = 0;
+            phase3_flash_start_tick = 0;
+            phase3_no_neighbor_start_tick = 0;
+
+            set_motion(STOP);
 
             for (int i = 0; i < TOTAL_NUM; i++) {
                 kilo_list[i] = 0;
@@ -459,96 +498,132 @@ void loop(){
             update_message();
         }
 
-    } else { // phase 2
+        // if(revolution == 1 && current_size == 1){
+        //     current_phase = PHASE2;
+        // }
+
+    } else if(current_phase == PHASE2) { // phase 2: rebuild add-code list
+
+        if(new_message){
+            new_message = 0;
+            last_heard_tick = kilo_ticks;
+            add_dependencies();
+            validate_inclusion();
+        }
+
+        uint8_t current_size = check_global_size();
+
+        update_message();
+        update_color(current_size);
+
+        if((kilo_ticks - phase2_start_tick) >= PHASE2_REBUILD_TIME){
+            current_phase = PHASE3;
+        }
+
+    } else { // phase 3: ends flash white, then drive away
 
         if(new_message){
             new_message = 0;
             last_heard_tick = kilo_ticks;
 
-            if(phase2_state != P2_GONE){
+            if(phase3_gone == 0){
                 add_dependencies();
                 validate_inclusion();
             }
         }
 
-        if(phase2_state != P2_DRIVING && phase2_state != P2_GONE){
+        /*
+         * Robots still in the line keep removing stale neighbors.
+         * A robot that is driving away should not remove itself through
+         * the normal dependency logic.
+         */
+        if(phase3_driving_away == 0 && phase3_gone == 0){
             remove_dependencies();
         }
 
         uint8_t current_size = check_global_size();
 
-        if((kilo_ticks - phase2_start_tick) < PHASE2_REBUILD_TIME){
-            set_motion(STOP);
-            update_message();
-            update_color(current_size);
-            return;
-        }
-
-        if(phase2_state == P2_GONE){
+        if(phase3_gone == 1){
             set_motion(STOP);
             set_color(RGB(0, 0, 0));
             update_message();
             return;
         }
 
-        if(current_size == 1 && phase2_id_active(kilo_uid)){
-            phase2_state = P2_LAST;
-        }
-
-        if(phase2_state == P2_LAST){
+        /*
+         * Last robot flashes blue and does not drive away.
+         */
+        if(current_size == 1 && phase3_id_active(kilo_uid)){
             set_motion(STOP);
-            phase2_flash_blue();
+            phase3_flash_blue();
             update_message();
             return;
         }
 
-        if(phase2_state == P2_FLASHING){
+        /*
+         * End robot flashes white for 10 seconds before driving away.
+         */
+        if(phase3_flashing == 1){
             set_motion(STOP);
+            phase3_flash_white();
 
-            if((kilo_ticks - phase2_flash_start_tick) >= PHASE2_FLASH_TIME){
-                phase2_state = P2_DRIVING;
-                phase2_no_neighbor_start_tick = 0;
+            if((kilo_ticks - phase3_flash_start_tick) >= PHASE3_FLASH_TIME){
+                phase3_flashing = 0;
+                phase3_driving_away = 1;
+                phase3_no_neighbor_start_tick = 0;
                 set_motion(FORWARD);
-            } else {
-                phase2_flash_white();
             }
 
             update_message();
             return;
         }
 
-        if(phase2_state == P2_DRIVING){
+        /*
+         * After flashing, end robot drives forward until it no longer hears
+         * active neighbors for PHASE3_OUT_OF_RANGE_TIME.
+         */
+        if(phase3_driving_away == 1){
             set_motion(FORWARD);
+            set_color(RGB(1, 1, 1));
 
-            if(phase2_count_neighbors() == 0){
-                if(phase2_no_neighbor_start_tick == 0){
-                    phase2_no_neighbor_start_tick = kilo_ticks;
+            if(phase3_count_neighbors() == 0){
+                if(phase3_no_neighbor_start_tick == 0){
+                    phase3_no_neighbor_start_tick = kilo_ticks;
                 }
 
-                if((kilo_ticks - phase2_no_neighbor_start_tick) >= PHASE2_OUT_OF_RANGE_TIME){
+                if((kilo_ticks - phase3_no_neighbor_start_tick) >= PHASE3_OUT_OF_RANGE_TIME){
                     set_motion(STOP);
-                    phase2_state = P2_GONE;
-                    phase2_remove_self_from_list();
+                    phase3_driving_away = 0;
+                    phase3_gone = 1;
+                    phase3_remove_self_from_list();
                     set_color(RGB(0, 0, 0));
                 }
             } else {
-                phase2_no_neighbor_start_tick = 0;
+                phase3_no_neighbor_start_tick = 0;
             }
 
             update_message();
             return;
         }
 
-        if(phase2_is_end_robot()){
-            phase2_state = P2_FLASHING;
-            phase2_flash_start_tick = kilo_ticks;
+        /*
+         * A robot is an end if it has exactly one active neighbor.
+         * If only two robots remain, only the lower UID leaves so one robot remains.
+         */
+        if(phase3_is_end_robot()){
+            phase3_flashing = 1;
+            phase3_flash_start_tick = kilo_ticks;
             set_motion(STOP);
-            phase2_flash_white();
-        } else {
-            set_motion(STOP);
-            update_color(current_size);
+            phase3_flash_white();
+            update_message();
+            return;
         }
 
+        /*
+         * Middle robots stay still.
+         */
+        set_motion(STOP);
+        update_color(current_size);
         update_message();
     }
 }

@@ -3,7 +3,7 @@
 #define TOTAL_NUM 5
 #define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
 #define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
-#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC
+#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
 #define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
@@ -302,16 +302,24 @@ void loop(){
             set_color(RGB(1, 1, 0)); // yellow — I am isolated
             current_phase = PHASE2;
             
-            // reset blacklist
+            // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
             disown_start_tick = 0;
+            to_exile = 0;
+            disown = 0;
+            new_message = 0;
 
             for (int i = 0; i < TOTAL_NUM; i++) {
                 kilo_list[i] = 0;
+                rx_list[i] = 0;
                 exile_blacklist[i] = 0;
+                dependents[i].name = 0;
+                dependents[i].age = 0;
             }
             kilo_list[0] = kilo_uid;
+
+            update_message();
         }
 
         // if(revolution == 1 && current_size == 1){
@@ -319,10 +327,6 @@ void loop(){
         // }
 
     } else { // phase 2
-        if (is_exiled) {
-            set_color(RGB(1, 1, 1));
-            return;
-        }
 
         if(new_message){
             new_message = 0;
@@ -331,30 +335,10 @@ void loop(){
             validate_inclusion();
         }
 
-        remove_dependencies();
-
         uint8_t current_size = check_global_size();
-
-        if (current_size >= TOTAL_NUM) {
-            if (full_size_start_tick == 0) {
-                full_size_start_tick = kilo_ticks;
-            }
-            if ((kilo_ticks - full_size_start_tick) >= REVOLUTION_START_TIME) {
-                revolution = 1;
-            }
-        }
 
         update_message();
         update_color(current_size);
-
-        // shutdown
-        if (revolution == 1 && last_heard_tick != 0 &&
-            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(0, 0, 0)); 
-            is_exiled = 1;
-            return;
-        }
-
     }
 }
 

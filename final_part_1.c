@@ -2,9 +2,10 @@
 
 #define TOTAL_NUM 5
 #define DEPENDENT_TIMEOUT 2 * TICKS_PER_SEC
-#define REVOLUTION_START_TIME 10 * TICKS_PER_SEC
-#define ISOLATION_TIMEOUT 2 * TICKS_PER_SEC  // self-exile if no message heard for this long
+#define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
+#define ISOLATION_TIMEOUT 4 * TICKS_PER_SEC  // self-exile if no message heard for this long
 #define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
+#define FLASH_TIME 10 * TICKS_PER_SEC
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
@@ -40,6 +41,10 @@ uint32_t full_size_start_tick = 0;
 
 // last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
+
+uint32_t flash_start_tick = 0;
+
+uint8_t break_line = 0;
 
 void update_color(uint8_t kilo_count){
     // if (revolution){
@@ -296,23 +301,30 @@ void loop(){
         update_message();
         update_color(current_size);
 
-        // if isolated after revolution, self-exile with yellow
+        // if isolated after revolution, switch into phase 2
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
             set_color(RGB(1, 1, 0)); // yellow — I am isolated
-            is_exiled = 1;
             current_phase = PHASE2;
             
-            // reset blacklist
+            // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
             disown_start_tick = 0;
+            to_exile = 0;
+            disown = 0;
+            new_message = 0;
 
             for (int i = 0; i < TOTAL_NUM; i++) {
                 kilo_list[i] = 0;
+                rx_list[i] = 0;
                 exile_blacklist[i] = 0;
+                dependents[i].name = 0;
+                dependents[i].age = 0;
             }
             kilo_list[0] = kilo_uid;
+
+            update_message();
         }
 
         // if(revolution == 1 && current_size == 1){
@@ -320,11 +332,7 @@ void loop(){
         // }
 
     } else { // phase 2
-        if (is_exiled) {
-            set_color(RGB(1, 1, 1));
-            return;
-        }
-
+        
         if(new_message){
             new_message = 0;
             last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
@@ -336,26 +344,62 @@ void loop(){
 
         uint8_t current_size = check_global_size();
 
+        update_message();
+        update_color(current_size);
+
         if (current_size >= TOTAL_NUM) {
             if (full_size_start_tick == 0) {
                 full_size_start_tick = kilo_ticks;
             }
             if ((kilo_ticks - full_size_start_tick) >= REVOLUTION_START_TIME) {
                 revolution = 1;
+                break_line++;
+                flash_start_tick = kilo_ticks;
             }
         }
 
-        update_message();
-        update_color(current_size);
-
-        // shutdown
+        // if isolated after revolution, switch into phase 2
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(0, 0, 0)); 
-            is_exiled = 1;
-            return;
+            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            current_phase = PHASE2;
+            
+            // reset add-code variables for phase 2
+            full_size_start_tick = 0;
+            last_heard_tick = 0;
+            disown_start_tick = 0;
+            to_exile = 0;
+            disown = 0;
+            new_message = 0;
+
+            for (int i = 0; i < TOTAL_NUM; i++) {
+                kilo_list[i] = 0;
+                rx_list[i] = 0;
+                exile_blacklist[i] = 0;
+                dependents[i].name = 0;
+                dependents[i].age = 0;
+            }
+            kilo_list[0] = kilo_uid;
+
+            update_message();
         }
 
+        // break line logic
+
+        if(break_line){
+            // have kilo 1 and 2 flash white for 10 seconds, then leave
+            if(kilo_uid == 1 || kilo_uid == 2){
+                // flash white for 10 seconds
+                if(kilo_ticks - flash_start_tick < FLASH_TIME){
+                    set_color(RGB(1, 1, 1));
+                    return;
+                }
+                set_motors(kilo_straight_left, kilo_straight_right);
+
+            }
+        }
+
+        
     }
 }
 

@@ -5,8 +5,13 @@
 #define REVOLUTION_START_TIME 4 * TICKS_PER_SEC
 #define ISOLATION_TIMEOUT 4 * TICKS_PER_SEC  // self-exile if no message heard for this long
 #define DISOWN_BROADCAST_TIME 2 * TICKS_PER_SEC
-#define FLASH_TIME 2 * TICKS_PER_SEC
+#define FLASH_TIME 10 * TICKS_PER_SEC
 #define FLASH_BLINK_PERIOD (TICKS_PER_SEC / 2)
+
+#define STOP    0
+#define FORWARD 1
+#define LEFT    2
+#define RIGHT   3
 
 typedef enum { PHASE1, PHASE2 } phase_t;
 phase_t current_phase;
@@ -33,25 +38,47 @@ uint32_t disown_start_tick = 0;
 
 uint8_t exile_blacklist[TOTAL_NUM] = {0, 0, 0, 0, 0};
 
-// flag set when this bot learns it has been exiled
 uint8_t is_exiled = 0;
 uint8_t is_end = 0;
 
-// tick when this bot first observed a full-size swarm
 uint32_t full_size_start_tick = 0;
-
-// last tick this bot heard any message from a neighbor
 uint32_t last_heard_tick = 0;
 
 uint32_t flash_start_tick = 0;
 
 uint8_t break_line = 0;
 
+uint8_t cur_motion = STOP;
+
+void set_motion(uint8_t new_motion)
+{
+    if (cur_motion != new_motion) {
+        cur_motion = new_motion;
+
+        switch (cur_motion) {
+            case STOP:
+                set_motors(0, 0);
+                break;
+
+            case FORWARD:
+                spinup_motors();
+                set_motors(kilo_straight_left, kilo_straight_right);
+                break;
+
+            case LEFT:
+                spinup_motors();
+                set_motors(kilo_turn_left, 0);
+                break;
+
+            case RIGHT:
+                spinup_motors();
+                set_motors(0, kilo_turn_right);
+                break;
+        }
+    }
+}
+
 void update_color(uint8_t kilo_count){
-    // if (revolution){
-    //     set_color(RGB(1, 0, 1));
-    //     return;
-    // }
     switch (kilo_count)
     {
     case 1:
@@ -195,7 +222,6 @@ void remove_dependencies(){
     }
 
     if (exile_target != 0) {
-        // check if this bot itself has been exiled
         if (exile_target == kilo_uid) {
             is_exiled = 1;
             return;
@@ -277,6 +303,7 @@ void setup() {
     disown_start_tick = 0;
     flash_start_tick = 0;
     break_line = 0;
+    cur_motion = STOP;
 
     for (int i = 0; i < TOTAL_NUM; i++) {
         kilo_list[i] = 0;
@@ -289,11 +316,12 @@ void setup() {
 }
 
 void loop(){
-    // exiled bots freeze as white and do nothing else
     if (is_exiled) {
+        set_motion(STOP);
         set_color(RGB(1, 1, 1));
         return;
     } else if (is_end) {
+        set_motion(STOP);
         set_color(RGB(0, 1, 1));
         return;
     }
@@ -302,7 +330,7 @@ void loop(){
 
         if(new_message){
             new_message = 0;
-            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
+            last_heard_tick = kilo_ticks;
             add_dependencies();
             validate_inclusion();
         }
@@ -323,13 +351,12 @@ void loop(){
         update_message();
         update_color(current_size);
 
-        // if isolated after revolution, switch into phase 2
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            set_motion(STOP);
+            set_color(RGB(1, 1, 0));
             current_phase = PHASE2;
             
-            // reset add-code variables for phase 2
             full_size_start_tick = 0;
             last_heard_tick = 0;
             disown_start_tick = 0;
@@ -352,15 +379,11 @@ void loop(){
             update_message();
         }
 
-        // if(revolution == 1 && current_size == 1){
-        //     current_phase = PHASE2;
-        // }
-
-    } else { // phase 2
+    } else {
         
         if(new_message){
             new_message = 0;
-            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
+            last_heard_tick = kilo_ticks;
             add_dependencies();
             validate_inclusion();
         }
@@ -372,6 +395,7 @@ void loop(){
         update_message();
 
         if (break_line > 0 && current_size == 1) {
+            set_motion(STOP);
             flash_blue_clear();
             return;
         } else {
@@ -389,10 +413,10 @@ void loop(){
             }
         }
 
-        // if isolated after revolution, reset phase 2 add-code variables
         if (revolution == 1 && last_heard_tick != 0 &&
             (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            set_motion(STOP);
+            set_color(RGB(1, 1, 0));
             current_phase = PHASE2;
             
             full_size_start_tick = 0;
@@ -417,29 +441,34 @@ void loop(){
             update_message();
         }
 
-        // break line logic
         if (break_line > 0) {
             uint32_t elapsed_time = kilo_ticks - flash_start_tick;
 
-            // Kilos 1 and 2 Sequence
             if (kilo_uid == 1 || kilo_uid == 2) {
                 if (elapsed_time < FLASH_TIME) {
+                    set_motion(STOP);
                     flash_white_clear();
                 } else {
-                    spinup_motors();
-                    set_motors(kilo_straight_left, kilo_straight_right);
+                    set_motion(FORWARD);
                 }
             }
 
-            // Kilos 3 and 4 Sequence
             if (kilo_uid == 3 || kilo_uid == 4) {
                 if (elapsed_time >= FLASH_TIME && elapsed_time < (FLASH_TIME * 2)) {
+                    set_motion(STOP);
                     flash_white_clear();
                 } else if (elapsed_time >= (FLASH_TIME * 2)) {
-                    spinup_motors();
-                    set_motors(kilo_straight_left, kilo_straight_right);
+                    set_motion(FORWARD);
+                } else {
+                    set_motion(STOP);
                 }
             }
+
+            if (kilo_uid == 5) {
+                set_motion(STOP);
+            }
+        } else {
+            set_motion(STOP);
         }
     }
 }

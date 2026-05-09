@@ -38,6 +38,10 @@ uint32_t full_size_start_tick = 0;
 uint32_t last_heard_tick = 0;
 
 void update_color(uint8_t kilo_count){
+    // if (revolution){
+    //     set_color(RGB(1, 0, 1));
+    //     return;
+    // }
     switch (kilo_count)
     {
     case 1:
@@ -47,7 +51,7 @@ void update_color(uint8_t kilo_count){
         set_color(RGB(1, 0, 0)); // red
         break;
     case 3:
-        set_color(RGB(0, 1, 1)); // cyan
+        set_color(RGB(1, 1, 0)); // yellow
         break;
     case 4:
         set_color(RGB(0, 1, 0)); // green
@@ -249,9 +253,19 @@ void loop(){
         return;
     }
 
-    uint8_t current_size = check_global_size();
-
     if(current_phase == PHASE1){
+
+        if(new_message){
+            new_message = 0;
+            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
+            add_dependencies();
+            validate_inclusion();
+        }
+
+        remove_dependencies();
+
+        uint8_t current_size = check_global_size();
+
         if (current_size >= TOTAL_NUM) {
             if (full_size_start_tick == 0) {
                 full_size_start_tick = kilo_ticks;
@@ -264,20 +278,12 @@ void loop(){
         update_message();
         update_color(current_size);
 
-        if(new_message){
-            new_message = 0;
-            last_heard_tick = kilo_ticks;  // refresh timestamp on every received message
-            add_dependencies();
-            validate_inclusion();
-        }
-        // remove_dependencies();
-
         // if isolated after revolution, self-exile with yellow
-        // if (revolution == 1 && last_heard_tick != 0 &&
-        //     (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
-        //     set_color(RGB(1, 1, 0)); // yellow — I am isolated
-        //     is_exiled = 1;
-        // }
+        if (revolution == 1 && last_heard_tick != 0 &&
+            (kilo_ticks - last_heard_tick) >= ISOLATION_TIMEOUT) {
+            set_color(RGB(1, 1, 0)); // yellow — I am isolated
+            is_exiled = 1;
+        }
 
         // if(revolution == 1 && current_size == 1){
         //     current_phase = PHASE2;

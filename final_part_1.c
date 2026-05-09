@@ -371,6 +371,7 @@ void loop(){
             to_exile = 0;
             disown = 0;
             new_message = 0;
+            revolution = 0;
 
             for (int i = 0; i < TOTAL_NUM; i++) {
                 kilo_list[i] = 0;

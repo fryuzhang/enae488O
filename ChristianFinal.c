@@ -83,6 +83,14 @@ void flash_white_clear(){
     }
 }
 
+void flash_blue_clear(){
+    if(((kilo_ticks / FLASH_BLINK_PERIOD) % 2) == 0){
+        set_color(RGB(0, 0, 1));
+    } else {
+        set_color(RGB(0, 0, 0));
+    }
+}
+
 void update_message() {
     if(disown != 0 && (kilo_ticks - disown_start_tick) > DISOWN_BROADCAST_TIME){
         disown = 0;
@@ -424,6 +432,13 @@ void loop(){
                 } else if (elapsed_time >= (FLASH_TIME * 2)) {
                     spinup_motors();
                     set_motors(kilo_straight_left, kilo_straight_right);
+                }
+            }
+
+            // Kilo 5 Final Robot Sequence
+            if (kilo_uid == 5) {
+                if (elapsed_time >= (FLASH_TIME * 2)) {
+                    flash_blue_clear();
                 }
             }
         }
